@@ -4,6 +4,7 @@
 #include "vmemscan/formatter.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
+#include "vmemscan/iat_hook_detector.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/ioc_extractor.hpp"
 #include "vmemscan/memory_dumper.hpp"
@@ -14,7 +15,9 @@
 #include "vmemscan/peb_auditor.hpp"
 #include "vmemscan/privileges.hpp"
 #include "vmemscan/process_snapshot.hpp"
+#include "vmemscan/risk_scorer.hpp"
 #include "vmemscan/snapshot_differ.hpp"
+#include "vmemscan/syscall_auditor.hpp"
 #include "vmemscan/thread_analyzer.hpp"
 
 #include <cassert>
@@ -408,6 +411,82 @@ void test_ioc_extractor_classification() {
     check(has_cmd, "detected System Command IOC");
 }
 
+void test_direct_syscall_detection() {
+    // 1. Classic Syswhispers stub: MOV R10, RCX; MOV EAX, 0x18; SYSCALL; RET
+    // 4C 8B D1 B8 18 00 00 00 0F 05 C3
+    const uint8_t syswhispers_stub[] = {
+        0x4C, 0x8B, 0xD1,
+        0xB8, 0x18, 0x00, 0x00, 0x00,
+        0x0F, 0x05,
+        0xC3
+    };
+
+    auto findings1 = SyscallAuditor::scan_buffer_for_syscalls(
+        syswhispers_stub, sizeof(syswhispers_stub), 0x140001000, true, false, L""
+    );
+    check(findings1.size() == 1, "detected direct syscall stub");
+    check(findings1[0].ssn == 0x18, "extracted syscall SSN 0x18");
+    check(findings1[0].stub_type.find(L"Syswhispers") != std::wstring::npos, "classified as Syswhispers stub");
+    check(findings1[0].is_unbacked, "flagged as unbacked");
+
+    // 2. Raw SYSCALL opcode
+    const uint8_t raw_syscall[] = { 0x90, 0x90, 0x0F, 0x05, 0x90 };
+    auto findings2 = SyscallAuditor::scan_buffer_for_syscalls(
+        raw_syscall, sizeof(raw_syscall), 0x140002000, false, true, L"calc.exe"
+    );
+    check(findings2.size() == 1, "detected raw syscall opcode");
+    check(findings2[0].stub_type.find(L"Raw Syscall") != std::wstring::npos, "classified as raw syscall opcode");
+    check(findings2[0].is_rwx, "flagged as rwx");
+
+    // 3. Clean buffer without syscall opcodes
+    const uint8_t clean_buf[] = { 0x48, 0x89, 0x5C, 0x24, 0x08, 0xC3 };
+    auto findings3 = SyscallAuditor::scan_buffer_for_syscalls(
+        clean_buf, sizeof(clean_buf), 0x140003000, false, false, L"user32.dll"
+    );
+    check(findings3.empty(), "clean buffer has zero direct syscalls");
+}
+
+void test_iat_hook_detection() {
+    // Audit IAT of self process
+    uint64_t image_base = reinterpret_cast<uint64_t>(GetModuleHandleW(nullptr));
+    check(image_base != 0, "retrieved current module base");
+
+    auto rep = IatHookDetector::audit_process_iat(
+        GetCurrentProcess(),
+        GetCurrentProcessId(),
+        L"vmemscan_tests.exe",
+        sizeof(void*) == 8,
+        {},
+        image_base
+    );
+
+    check(rep.total_imports_checked > 0, "IAT audit traversed imported function descriptors");
+    check(rep.hooked_imports_count == 0, "self process has zero hooked IAT entries");
+}
+
+void test_risk_scorer_evaluation() {
+    // 1. Clean process baseline
+    auto clean_risk = RiskScorer::compute_process_risk(false, false, 0, 0, 0, 0, 0, 0, 0, 0, false);
+    check(clean_risk.total_score == 0, "clean baseline score is 0");
+    check(clean_risk.verdict == ThreatVerdict::Clean, "clean baseline verdict is Clean");
+    check(clean_risk.risk_factors.empty(), "clean baseline has no risk factors");
+
+    // 2. High risk / compromised process
+    auto crit_risk = RiskScorer::compute_process_risk(true, true, 2, 1, 1, 3, 2, 1, 1, 1, true);
+    check(crit_risk.total_score == 100, "compromised process score capped at 100");
+    check(crit_risk.verdict == ThreatVerdict::CriticalCompromised, "verdict is CriticalCompromised");
+    check(crit_risk.risk_factors.size() >= 5, "multiple risk factors registered");
+
+    // 3. Suspicious process
+    auto susp_risk = RiskScorer::compute_process_risk(false, false, 1, 0, 1, 0, 0, 0, 0, 0, false);
+    check(susp_risk.total_score >= 46 && susp_risk.total_score <= 75, "score falls in suspicious range");
+    check(susp_risk.verdict == ThreatVerdict::Suspicious, "verdict is Suspicious");
+
+    // 4. String representations
+    check(RiskScorer::verdict_to_string(ThreatVerdict::Clean) == L"CLEAN (Normal Baseline)", "clean verdict string");
+    check(RiskScorer::verdict_to_string(ThreatVerdict::CriticalCompromised).find(L"CRITICAL") != std::wstring::npos, "critical verdict string");
+}
+
 int main() {
     std::wcout << L"[RUN] test_privileges_check\n";
     test_privileges_check();
@@ -472,6 +551,15 @@ int main() {
     std::wcout << L"[RUN] test_ioc_extractor_classification\n";
     test_ioc_extractor_classification();
 
-    std::wcout << L"All 21 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_direct_syscall_detection\n";
+    test_direct_syscall_detection();
+
+    std::wcout << L"[RUN] test_iat_hook_detection\n";
+    test_iat_hook_detection();
+
+    std::wcout << L"[RUN] test_risk_scorer_evaluation\n";
+    test_risk_scorer_evaluation();
+
+    std::wcout << L"All 24 unit test suites passed successfully.\n";
     return 0;
 }

@@ -5,6 +5,7 @@
 #include "vmemscan/entropy_calculator.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
+#include "vmemscan/iat_hook_detector.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/ioc_extractor.hpp"
 #include "vmemscan/memory_dumper.hpp"
@@ -12,7 +13,9 @@
 #include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
 #include "vmemscan/peb_auditor.hpp"
+#include "vmemscan/risk_scorer.hpp"
 #include "vmemscan/snapshot_differ.hpp"
+#include "vmemscan/syscall_auditor.hpp"
 #include "vmemscan/thread_analyzer.hpp"
 
 #include <string>
@@ -41,6 +44,9 @@ public:
     static void print_c2_report(const C2ScanReport& report);
     static void print_peb_report(const PebAuditReport& report);
     static void print_ioc_report(const IocReport& report);
+    static void print_syscall_report(const SyscallAuditReport& report);
+    static void print_iat_report(const IatHookReport& report);
+    static void print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk);
     static void print_pattern_matches(const std::vector<PatternMatch>& matches);
     static void print_dump_result(const DumpResult& res);
 

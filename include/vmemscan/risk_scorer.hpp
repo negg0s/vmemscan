@@ -1,0 +1,51 @@
+#pragma once
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace vmemscan {
+
+enum class ThreatVerdict {
+    Clean,                // Score 0 - 20
+    LowRisk,              // Score 21 - 45
+    Suspicious,           // Score 46 - 75
+    CriticalCompromised   // Score 76 - 100
+};
+
+struct RiskScoreBreakdown {
+    uint32_t total_score = 0; // 0 - 100
+    ThreatVerdict verdict = ThreatVerdict::Clean;
+    std::wstring verdict_string;
+    std::wstring recommended_action;
+    std::vector<std::wstring> risk_factors;
+};
+
+class RiskScorer {
+public:
+    static RiskScoreBreakdown compute_process_risk(
+        bool has_c2_beacon,
+        bool is_hollowed,
+        size_t direct_syscalls_count,
+        size_t unbacked_threads_count,
+        size_t security_patches_count,
+        size_t unbacked_exec_count,
+        size_t rwx_regions_count,
+        size_t iat_hooks_count,
+        size_t unlinked_modules_count,
+        size_t high_entropy_regions_count,
+        bool has_argument_spoofing
+    );
+
+    static std::wstring verdict_to_string(ThreatVerdict v);
+};
+
+} // namespace vmemscan

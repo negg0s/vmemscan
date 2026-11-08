@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-11-08
+
+### Added
+- Direct syscall and EDR bypass auditor (--syscalls): scans executable regions for direct syscall stubs (Syswhispers, Hell's Gate, Halo's Gate) and standalone syscall instructions residing outside legitimate system libraries (ntdll.dll, win32u.dll), extracting System Service Numbers (SSN).
+- Import Address Table (IAT) hook and redirection detector (--iat): parses remote PE image import descriptors and IAT thunks, verifying that all imported API pointers resolve to valid disk-backed library code rather than unbacked private memory or RWX pages.
+- Unified forensic risk scoring engine and threat verdict (--score): synthesizes memory indicators (C2 beacons, hollowing, direct syscalls, unbacked threads, telemetry patches, W^X violations, IAT hooks, PEB spoofing) into a normalized 0-100 score and operational forensic verdict (Clean, LowRisk, Suspicious, CriticalCompromised).
+- Expanded automated unit test suite from 21 to 24 test suites.
+
 ## [0.4.0] - 2026-11-08
 
 ### Added

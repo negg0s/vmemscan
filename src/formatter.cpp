@@ -514,6 +514,85 @@ void Formatter::print_ioc_report(const IocReport& report) {
     std::wcout << L"====================================================================================================\n\n";
 }
 
+void Formatter::print_syscall_report(const SyscallAuditReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" DIRECT SYSCALL & EDR BYPASS AUDIT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Executable Regions Checked: " << report.regions_evaluated << L"\n";
+    std::wcout << L"  Direct Syscalls Discovered: " << report.anomalies_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies_count == 0) {
+        std::wcout << L"  Zero direct syscall stubs detected. System calls originate strictly from ntdll.dll / win32u.dll.\n";
+    } else {
+        for (const auto& s : report.findings) {
+            std::wcout << L"  [DETECTED DIRECT SYSCALL] Address: " << to_hex_string(s.virtual_address) << L"\n";
+            std::wcout << L"    Stub Type   : " << s.stub_type << L"\n";
+            if (s.ssn != 0) {
+                std::wcout << L"    Syscall SSN : 0x" << std::hex << s.ssn << std::dec << L" (Decimal: " << s.ssn << L")\n";
+            }
+            std::wcout << L"    Memory Type : " << (s.is_unbacked ? L"UNBACKED PRIVATE MEMORY [!]" : (s.mapped_module.empty() ? L"Anonymous" : s.mapped_module)) << L"\n";
+            if (s.is_rwx) {
+                std::wcout << L"    Protection  : PAGE_EXECUTE_READWRITE [W^X BREACH]\n";
+            }
+            if (!s.instruction_bytes.empty()) {
+                std::wcout << L"    Hex Bytes   : " << bytes_to_hex_preview(s.instruction_bytes) << L"\n";
+            }
+            std::wcout << L"\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_iat_report(const IatHookReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" IMPORT ADDRESS TABLE (IAT) HOOK AUDIT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Total Imports Verified    : " << report.total_imports_checked << L"\n";
+    std::wcout << L"  Hooked / Divergent Entries: " << report.hooked_imports_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.hooked_imports_count == 0) {
+        std::wcout << L"  Zero IAT hooks detected. All imported function pointers resolve to clean system module ranges.\n";
+    } else {
+        for (const auto& h : report.findings) {
+            std::wcout << L"  [IAT HOOK DETECTED] " << h.imported_module << L"!" << std::wstring(h.function_name.begin(), h.function_name.end()) << L"\n";
+            std::wcout << L"    IAT Entry Address : " << to_hex_string(h.iat_entry_address) << L"\n";
+            std::wcout << L"    Actual Pointer    : " << to_hex_string(h.actual_function_pointer)
+                       << (h.points_to_unbacked ? L" [POINTS TO UNBACKED PRIVATE MEMORY]" : L"")
+                       << (h.points_to_rwx ? L" [RWX PAGE]" : L"") << L"\n";
+            if (!h.actual_mapped_module.empty()) {
+                std::wcout << L"    Resolved Module   : " << h.actual_mapped_module << L"\n";
+            }
+            std::wcout << L"    Details           : " << h.hook_description << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" FORENSIC RISK TRIAGE & THREAT VERDICT: " << proc.name << L" (PID " << proc.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Overall Risk Score        : " << risk.total_score << L" / 100\n";
+    std::wcout << L"  Threat Verdict            : " << risk.verdict_string << L"\n";
+    std::wcout << L"  Recommended Action        : " << risk.recommended_action << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (risk.risk_factors.empty()) {
+        std::wcout << L"  Zero threat indicators identified. Process behavior matches clean baseline.\n";
+    } else {
+        std::wcout << L"  Identified Threat Factors:\n";
+        for (const auto& f : risk.risk_factors) {
+            std::wcout << L"    [*] " << f << L"\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 std::string Formatter::to_json(
     const ProcessInfo& proc,
     const ProcessMemorySummary& summary,

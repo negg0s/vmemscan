@@ -21,6 +21,9 @@ Written in modern C++20 and pure Win32 / NT Native API. Zero external dependenci
 - **Inline API Hook Detection**: Compares in-memory instruction bytes of critical system APIs in `ntdll.dll` against clean disk bytes, detecting relative jumps, indirect jumps, and user-mode rootkit hooks.
 - **Security Telemetry Patch Detection**: Audits in-memory tampering of Event Tracing for Windows (ETW: `EtwEventWrite`, `EtwEventWriteFull`, `NtTraceEvent`) and Antimalware Scan Interface (AMSI: `AmsiScanBuffer`, `AmsiScanString`, `AmsiOpenSession`) security functions.
 - **Process Hollowing & Header Stomping Forensics**: Queries the remote PEB to extract `ImageBaseAddress`, compares in-memory entry points and image size against on-disk PE headers, and inspects entry points for redirection stubs.
+- **Direct Syscall & EDR Bypass Audit**: Scans executable memory regions for direct syscall stubs (Syswhispers, Hell's Gate, Halo's Gate) and standalone syscall instructions residing outside `ntdll.dll` / `win32u.dll`, extracting System Service Numbers (SSN).
+- **Import Address Table (IAT) Hook Detection**: Traverses remote PE import descriptors and IAT thunks, identifying pointers redirected to unbacked private memory or RWX pages.
+- **Unified Forensic Risk Scoring Engine**: Evaluates active indicators across injection, hollowing, direct syscalls, thread contexts, and telemetry patches to assign a normalized 0-100 risk score and operational threat verdict.
 - **Virtual Memory Snapshot Baseline & Diffing**: Captures memory state baselines to JSON and detects late code injections, W^X protection escalations, and modified executable pages.
 - **Memory Region Dumper & PE Fixup**: Dumps target memory regions to disk, automatically reconstructing PE section alignment and raw pointers for analysis in static disassemblers.
 - **Memory Pattern & String Search**: Scans process virtual memory for wildcard byte patterns (e.g. `48 8B ?? ?? ?? E8`) and ASCII strings.
@@ -71,6 +74,9 @@ Analysis Modes:
   --entropy                Audit memory entropy to uncover encrypted/packed payload buffers
   --c2                     Scan committed memory for Cobalt Strike C2 beacon configurations
   --peb                    Audit PEB parameters, argument spoofing, and CLR profiler hijacks
+  --syscalls               Audit executable memory for direct syscall stubs and EDR bypasses
+  --iat                    Audit Import Address Table (IAT) for pointer hijacking and inline hooks
+  --score                  Compute unified forensic threat score (0-100) and risk assessment
   --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address
   --summary                Display virtual memory allocation statistics and breakdown
 
@@ -136,6 +142,15 @@ vmemscan -p 1234 --c2
 
 # Audit PEB process parameters, command-line spoofing, and CLR profiler hijacking
 vmemscan -p 1234 --peb
+
+# Audit executable regions for direct syscall stubs and EDR bypasses
+vmemscan -p 1234 --syscalls
+
+# Audit Import Address Table (IAT) for pointer hijacking and unbacked targets
+vmemscan -p 1234 --iat
+
+# Compute unified forensic threat score and operational verdict
+vmemscan -p 1234 --score
 
 # Extract and classify IOCs (URLs, pipes, IPv4, system commands) from memory region
 vmemscan -p 1234 --iocs 0x7FFA120000

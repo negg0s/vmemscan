@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(vmemscan
-    VERSION 0.4.0
+    VERSION 0.5.0
     LANGUAGES CXX
 )
 
@@ -53,6 +53,7 @@ add_library(vmemscan_core STATIC
     include/vmemscan/formatter.hpp
     include/vmemscan/hook_detector.hpp
     include/vmemscan/hollowing_detector.hpp
+    include/vmemscan/iat_hook_detector.hpp
     include/vmemscan/injection_detector.hpp
     include/vmemscan/ioc_extractor.hpp
     include/vmemscan/memory_dumper.hpp
@@ -64,7 +65,9 @@ add_library(vmemscan_core STATIC
     include/vmemscan/peb_auditor.hpp
     include/vmemscan/privileges.hpp
     include/vmemscan/process_snapshot.hpp
+    include/vmemscan/risk_scorer.hpp
     include/vmemscan/snapshot_differ.hpp
+    include/vmemscan/syscall_auditor.hpp
     include/vmemscan/thread_analyzer.hpp
 
     src/c2_detector.cpp
@@ -72,6 +75,7 @@ add_library(vmemscan_core STATIC
     src/formatter.cpp
     src/hook_detector.cpp
     src/hollowing_detector.cpp
+    src/iat_hook_detector.cpp
     src/injection_detector.cpp
     src/ioc_extractor.cpp
     src/memory_dumper.cpp
@@ -82,7 +86,9 @@ add_library(vmemscan_core STATIC
     src/peb_auditor.cpp
     src/privileges.cpp
     src/process_snapshot.cpp
+    src/risk_scorer.cpp
     src/snapshot_differ.cpp
+    src/syscall_auditor.cpp
     src/thread_analyzer.cpp
 )
 

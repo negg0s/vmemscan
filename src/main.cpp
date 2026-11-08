@@ -4,6 +4,7 @@
 #include "vmemscan/formatter.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
+#include "vmemscan/iat_hook_detector.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/ioc_extractor.hpp"
 #include "vmemscan/memory_dumper.hpp"
@@ -14,7 +15,9 @@
 #include "vmemscan/peb_auditor.hpp"
 #include "vmemscan/privileges.hpp"
 #include "vmemscan/process_snapshot.hpp"
+#include "vmemscan/risk_scorer.hpp"
 #include "vmemscan/snapshot_differ.hpp"
+#include "vmemscan/syscall_auditor.hpp"
 #include "vmemscan/thread_analyzer.hpp"
 
 #include <iostream>
@@ -51,6 +54,9 @@ static void print_help() {
     std::wcout << L"  --entropy                Audit memory entropy to uncover encrypted/packed payload buffers\n";
     std::wcout << L"  --c2                     Scan committed memory for Cobalt Strike C2 beacon configurations\n";
     std::wcout << L"  --peb                    Audit PEB parameters, argument spoofing, and CLR profiler hijacks\n";
+    std::wcout << L"  --syscalls               Audit executable memory for direct syscall stubs and EDR bypasses\n";
+    std::wcout << L"  --iat                    Audit Import Address Table (IAT) for pointer hijacking and inline hooks\n";
+    std::wcout << L"  --score                  Compute unified forensic threat score (0-100) and risk assessment\n";
     std::wcout << L"  --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address\n";
     std::wcout << L"  --summary                Display virtual memory allocation statistics and breakdown\n\n";
     std::wcout << L"Memory Snapshot & Diffing:\n";
@@ -75,6 +81,9 @@ static void print_help() {
     std::wcout << L"Examples:\n";
     std::wcout << L"  vmemscan -p 1234 -i\n";
     std::wcout << L"  vmemscan -p 1234 --patches\n";
+    std::wcout << L"  vmemscan -p 1234 --syscalls\n";
+    std::wcout << L"  vmemscan -p 1234 --iat\n";
+    std::wcout << L"  vmemscan -p 1234 --score\n";
     std::wcout << L"  vmemscan -p 1234 --hollowing\n";
     std::wcout << L"  vmemscan -p 1234 --save-snapshot baseline.json\n";
     std::wcout << L"  vmemscan -p 1234 --diff-snapshot baseline.json\n";
@@ -102,6 +111,9 @@ int wmain(int argc, wchar_t* argv[]) {
     bool mode_modules = false;
     bool mode_c2 = false;
     bool mode_peb = false;
+    bool mode_syscalls = false;
+    bool mode_iat = false;
+    bool mode_score = false;
     bool mode_iocs = false;
     uint64_t iocs_addr = 0;
     bool mode_summary = false;
@@ -130,7 +142,7 @@ int wmain(int argc, wchar_t* argv[]) {
             print_help();
             return 0;
         } else if (arg == L"-v" || arg == L"--version") {
-            std::wcout << L"vmemscan version 0.4.0\n";
+            std::wcout << L"vmemscan version 0.5.0\n";
             return 0;
         } else if (arg == L"-p" || arg == L"--pid") {
             if (i + 1 < argc) target_pid = static_cast<uint32_t>(_wtoi(argv[++i]));
@@ -160,6 +172,12 @@ int wmain(int argc, wchar_t* argv[]) {
             mode_c2 = true;
         } else if (arg == L"--peb") {
             mode_peb = true;
+        } else if (arg == L"--syscalls") {
+            mode_syscalls = true;
+        } else if (arg == L"--iat") {
+            mode_iat = true;
+        } else if (arg == L"--score") {
+            mode_score = true;
         } else if (arg == L"--iocs") {
             mode_iocs = true;
             if (i + 1 < argc) iocs_addr = _wcstoui64(argv[++i], nullptr, 0);
@@ -379,6 +397,65 @@ int wmain(int argc, wchar_t* argv[]) {
         if (!output_json && !output_csv) Formatter::print_banner();
         auto peb_rep = PebAuditor::audit_process_peb(hProcess, target_proc.pid, target_proc.name, target_proc.path, target_proc.is_64bit);
         Formatter::print_peb_report(peb_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_syscalls) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto sc_rep = SyscallAuditor::audit_process_syscalls(hProcess, target_proc.pid, target_proc.name, regions);
+        Formatter::print_syscall_report(sc_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_iat) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto iat_rep = IatHookDetector::audit_process_iat(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit, regions);
+        Formatter::print_iat_report(iat_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_score) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto c2_rep = C2Detector::scan_process_c2(hProcess, target_proc.pid, target_proc.name, regions);
+        auto hol_rep = HollowingDetector::analyze_process(hProcess, target_proc.pid, target_proc.name, target_proc.path, target_proc.is_64bit);
+        auto sc_rep = SyscallAuditor::audit_process_syscalls(hProcess, target_proc.pid, target_proc.name, regions);
+        auto thr_rep = ThreadAnalyzer::audit_process_threads(hProcess, target_proc.pid, target_proc.name, regions);
+        auto patch_rep = PatchDetector::audit_process_patches(hProcess, target_proc.pid, target_proc.name);
+        auto iat_rep = IatHookDetector::audit_process_iat(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit, regions, hol_rep.in_memory_image_base);
+        auto mod_rep = ModuleAuditor::audit_process_modules(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
+        auto ent_rep = EntropyCalculator::audit_process_entropy(hProcess, regions);
+        auto peb_rep = PebAuditor::audit_process_peb(hProcess, target_proc.pid, target_proc.name, target_proc.path, target_proc.is_64bit);
+
+        size_t unbacked_exec_count = 0;
+        size_t rwx_count = 0;
+        for (const auto& r : regions) {
+            if (r.is_unbacked_executable) ++unbacked_exec_count;
+            if (r.is_rwx) ++rwx_count;
+        }
+
+        size_t high_entropy_count = 0;
+        for (const auto& er : ent_rep) {
+            if (er.is_high_entropy) ++high_entropy_count;
+        }
+
+        auto risk = RiskScorer::compute_process_risk(
+            !c2_rep.detected_beacons.empty(),
+            hol_rep.is_hollowed,
+            sc_rep.anomalies_count,
+            thr_rep.suspicious_threads_count,
+            patch_rep.anomalies.size(),
+            unbacked_exec_count,
+            rwx_count,
+            iat_rep.hooked_imports_count,
+            mod_rep.anomalous_modules_count,
+            high_entropy_count,
+            !peb_rep.anomalies.empty()
+        );
+
+        Formatter::print_risk_assessment(target_proc, risk);
         CloseHandle(hProcess);
         return 0;
     }
