@@ -33,7 +33,11 @@ Written in modern C++20 and pure Win32 / NT Native API. Zero external dependenci
 - **Process Security Mitigations & Exploit Defense Audit**: Queries `GetProcessMitigationPolicy` to assess DEP, Control Flow Guard (CFG), Arbitrary Code Guard (ACG), binary signature enforcement, remote image loading, and child process policies.
 - **Vectored Exception Handling (VEH) & PAGE_GUARD Trap Forensics**: Audits memory regions for unexpected `PAGE_GUARD` modifiers on executable and private pages (used to catch execution via `STATUS_GUARD_PAGE_VIOLATION` for VEH hooks), and inspects top-level unhandled exception filter pointers for redirections to unbacked memory.
 - **Thread Pool & Work Item Callback Forensics**: Inspects Windows Thread Pool worker threads (`TppWorkerThread`, `TppWaiterpThread`), auditing worker dispatch call stacks to uncover PoolParty callback injection (`TP_WORK`, `TP_TIMER`, `TP_WAIT` callbacks dispatched to unbacked private memory or RWX pages).
-- **Unified Forensic Risk Scoring Engine**: Evaluates active indicators across injection, hollowing, direct syscalls, indirect syscalls, thread contexts, stack return addresses, and telemetry patches to assign a normalized 0-100 risk score and operational threat verdict.
+- **Mapped Section View Forensics**: Audits committed `MEM_MAPPED` regions for anonymous executable sections, executable sections backed by non-executable data files (.dat, .bin, .png), and runtime section protection elevation.
+- **Call Stack Unwind Forensics (.pdata Validation)**: Inspects return addresses against module `.pdata` `RUNTIME_FUNCTION` entries to expose synthetic stack frames and Call Stack Spoofing.
+- **Fiber Execution Context & FLS Forensics**: Traverses thread execution contexts for active Fibers (`TEB.FiberData`), inspecting fiber start routines, fiber stack boundaries, and Fiber Local Storage (FLS) callbacks for unbacked memory redirection.
+- **In-Memory CLR & .NET Assembly Injection Forensics**: Detects native Win32 processes hosting the .NET CLR runtime (execute-assembly / Donut injection) and scans private memory pages for in-memory loaded .NET assembly metadata headers (`BSJB` magic `0x424A5342`).
+- **Unified Forensic Risk Scoring Engine**: Evaluates active indicators across injection, hollowing, direct syscalls, indirect syscalls, thread contexts, stack return addresses, fibers, CLR, and telemetry patches to assign a normalized 0-100 risk score and operational threat verdict.
 - **Virtual Memory Snapshot Baseline & Diffing**: Captures memory state baselines to JSON and detects late code injections, W^X protection escalations, and modified executable pages.
 - **Memory Region Dumper & PE Fixup**: Dumps target memory regions to disk, automatically reconstructing PE section alignment and raw pointers for analysis in static disassemblers.
 - **Memory Pattern & String Search**: Scans process virtual memory for wildcard byte patterns (e.g. `48 8B ?? ?? ?? E8`) and ASCII strings.
@@ -100,6 +104,8 @@ Analysis Modes:
   --tls                    Audit Thread Local Storage (TLS) callback directories and target memory
   --sections               Audit mapped section views and shared memory for anonymous shellcode
   --unwind                 Audit thread call stack return addresses for .pdata metadata and spoofing
+  --fibers                 Audit fiber execution contexts and unbacked Fiber Local Storage (FLS) callbacks
+  --clr                    Audit in-memory CLR runtime hosting and unbacked .NET assemblies (BSJB)
   --score                  Compute unified forensic threat score (0-100) and risk assessment
   --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address
   --summary                Display virtual memory allocation statistics and breakdown
@@ -214,6 +220,12 @@ vmemscan -p 1234 --sections
 
 # Audit thread call stack return addresses for missing .pdata metadata and stack spoofing
 vmemscan -p 1234 --unwind
+
+# Audit thread execution contexts for active Fibers and unbacked FLS callbacks
+vmemscan -p 1234 --fibers
+
+# Audit process for unmanaged .NET CLR injection and in-memory BSJB assemblies
+vmemscan -p 1234 --clr
 
 # Compute unified forensic threat score and operational verdict
 vmemscan -p 1234 --score

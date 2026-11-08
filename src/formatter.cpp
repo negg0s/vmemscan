@@ -955,6 +955,65 @@ void Formatter::print_unwind_report(const UnwindAuditReport& report) {
     std::wcout << L"====================================================================================================\n\n";
 }
 
+void Formatter::print_fiber_report(const FiberReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" FIBER EXECUTION CONTEXT & FIBER LOCAL STORAGE (FLS) FORENSICS (PID " << report.process_id << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Threads Inspected         : " << report.threads_examined << L"\n";
+    std::wcout << L"  Fibers Identified         : " << report.fibers_detected << L"\n";
+    std::wcout << L"  FLS Callbacks Inspected   : " << report.fls_callbacks_examined << L"\n";
+    std::wcout << L"  Anomalous Fibers / FLS    : " << report.anomalies.size() << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty()) {
+        std::wcout << L"  Zero fiber anomalies detected. Fiber execution contexts and FLS callbacks resolve to clean modules.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [FIBER ANOMALY DETECTED] Target Address: " << to_hex_string(a.target_address) << L"\n";
+            if (a.thread_id != 0) {
+                std::wcout << L"    Thread TID        : " << a.thread_id << L"\n";
+            }
+            std::wcout << L"    Fiber Data Base   : " << to_hex_string(a.fiber_data_address) << L"\n";
+            std::wcout << L"    Anomaly Type      : " << FiberAuditor::anomaly_type_to_string(a.anomaly_type) << L"\n";
+            std::wcout << L"    Details           : " << a.anomaly_description << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_clr_report(const ClrAuditReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" IN-MEMORY CLR & .NET INJECTION FORENSICS (PID " << report.process_id << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Compiled as Managed .NET  : " << (report.is_originally_managed ? L"YES (Managed PE)" : L"NO (Native Win32)") << L"\n";
+    std::wcout << L"  CLR Runtime Loaded        : " << (report.has_clr_runtime ? report.clr_module_name : L"NONE") << L"\n";
+    if (report.has_clr_runtime) {
+        std::wcout << L"  CLR Module Base           : " << to_hex_string(report.clr_module_base) << L"\n";
+    }
+    std::wcout << L"  In-Memory .NET Assemblies : " << report.in_memory_assemblies_count << L"\n";
+    std::wcout << L"  CLR Anomalies Detected    : " << report.anomalies.size() << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty()) {
+        std::wcout << L"  Zero CLR anomalies detected. Process does not exhibit unmanaged assembly injection or memory-loaded .NET artifacts.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [CLR INJECTION DETECTED] Address: " << to_hex_string(a.address) << L"\n";
+            std::wcout << L"    Anomaly Type      : " << ClrAuditor::anomaly_type_to_string(a.anomaly_type) << L"\n";
+            if (!a.clr_version.empty()) {
+                std::wcout << L"    Metadata Version  : " << std::wstring(a.clr_version.begin(), a.clr_version.end()) << L"\n";
+            }
+            if (a.size > 0) {
+                std::wcout << L"    Region Size       : 0x" << std::hex << a.size << std::dec << L" (" << format_bytes(a.size) << L")\n";
+            }
+            std::wcout << L"    Details           : " << a.description << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 void Formatter::print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk) {
     std::wcout << L"\n";
     std::wcout << L"====================================================================================================\n";

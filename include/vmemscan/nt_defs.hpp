@@ -13,6 +13,10 @@
 
 namespace vmemscan {
 
+#ifndef ThreadBasicInformation
+#define ThreadBasicInformation static_cast<THREADINFOCLASS>(0)
+#endif
+
 #ifndef ThreadQuerySetWin32StartAddress
 #define ThreadQuerySetWin32StartAddress static_cast<THREADINFOCLASS>(9)
 #endif

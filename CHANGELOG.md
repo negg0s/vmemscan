@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-11-08
+
+### Added
+- Fiber execution context and Fiber Local Storage forensics (--fibers): traverses thread execution contexts via TEB.FiberData and PEB FLS structures. Audits fiber start routines, fiber stack boundaries, and registered FLS callbacks, uncovering fiber injection, unbacked fiber execution, and RWX fiber allocations used to evade thread call stack walking.
+- In-memory CLR and .NET assembly injection forensics (--clr): detects native Win32 processes hosting the CLR runtime (execute-assembly / Donut injection) and scans committed private memory pages for in-memory loaded .NET assembly metadata headers (BSJB signature 0x424A5342), extracting metadata version strings and identifying unbacked .NET assemblies without on-disk file backing.
+- Integrated fiber injection (+40) and unmanaged CLR injection (+45) into the unified forensic threat scoring model.
+- Expanded automated unit test suite from 48 to 53 test suites.
+
 ## [1.2.0] - 2026-11-08
 
 ### Added

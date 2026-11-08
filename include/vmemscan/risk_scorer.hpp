@@ -55,7 +55,9 @@ public:
         size_t thread_pool_anomalies_count = 0,
         size_t tls_anomalies_count = 0,
         size_t section_anomalies_count = 0,
-        size_t unwind_anomalies_count = 0
+        size_t unwind_anomalies_count = 0,
+        size_t fiber_anomalies_count = 0,
+        size_t clr_anomalies_count = 0
     );
 
     static std::wstring verdict_to_string(ThreatVerdict v);

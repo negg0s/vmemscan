@@ -38,7 +38,9 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     size_t thread_pool_anomalies_count,
     size_t tls_anomalies_count,
     size_t section_anomalies_count,
-    size_t unwind_anomalies_count
+    size_t unwind_anomalies_count,
+    size_t fiber_anomalies_count,
+    size_t clr_anomalies_count
 ) {
     RiskScoreBreakdown r{};
     uint32_t score = 0;
@@ -156,6 +158,16 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     if (unwind_anomalies_count > 0) {
         score += 40;
         r.risk_factors.push_back(L"Call stack spoofing or missing function unwind metadata (.pdata) (+40)");
+    }
+
+    if (fiber_anomalies_count > 0) {
+        score += 40;
+        r.risk_factors.push_back(L"Fiber execution routine or FLS callback directed to unbacked memory (+40)");
+    }
+
+    if (clr_anomalies_count > 0) {
+        score += 45;
+        r.risk_factors.push_back(L"In-memory .NET assembly (BSJB) or unmanaged CLR injection detected (+45)");
     }
 
     if (high_entropy_regions_count > 0) {

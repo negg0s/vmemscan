@@ -1,7 +1,9 @@
 #include "vmemscan/anti_debug_auditor.hpp"
 #include "vmemscan/c2_detector.hpp"
+#include "vmemscan/clr_auditor.hpp"
 #include "vmemscan/common.hpp"
 #include "vmemscan/entropy_calculator.hpp"
+#include "vmemscan/fiber_auditor.hpp"
 #include "vmemscan/formatter.hpp"
 #include "vmemscan/ghosting_detector.hpp"
 #include "vmemscan/hook_detector.hpp"
@@ -84,6 +86,8 @@ static void print_help() {
     std::wcout << L"  --tls                    Audit Thread Local Storage (TLS) callback directories and target memory\n";
     std::wcout << L"  --sections               Audit mapped section views and shared memory for anonymous shellcode\n";
     std::wcout << L"  --unwind                 Audit thread call stack return addresses for .pdata metadata and spoofing\n";
+    std::wcout << L"  --fibers                 Audit fiber execution contexts and unbacked Fiber Local Storage (FLS) callbacks\n";
+    std::wcout << L"  --clr                    Audit in-memory CLR runtime hosting and unbacked .NET assemblies (BSJB)\n";
     std::wcout << L"  --score                  Compute unified forensic threat score (0-100) and risk assessment\n";
     std::wcout << L"  --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address\n";
     std::wcout << L"  --summary                Display virtual memory allocation statistics and breakdown\n\n";
@@ -123,6 +127,8 @@ static void print_help() {
     std::wcout << L"  vmemscan -p 1234 --tls\n";
     std::wcout << L"  vmemscan -p 1234 --sections\n";
     std::wcout << L"  vmemscan -p 1234 --unwind\n";
+    std::wcout << L"  vmemscan -p 1234 --fibers\n";
+    std::wcout << L"  vmemscan -p 1234 --clr\n";
     std::wcout << L"  vmemscan -p 1234 --score\n";
     std::wcout << L"  vmemscan -p 1234 --hollowing\n";
     std::wcout << L"  vmemscan -p 1234 --ghosting\n";
@@ -169,6 +175,8 @@ int wmain(int argc, wchar_t* argv[]) {
     bool mode_tls = false;
     bool mode_sections = false;
     bool mode_unwind = false;
+    bool mode_fibers = false;
+    bool mode_clr = false;
     bool mode_score = false;
     bool mode_iocs = false;
     uint64_t iocs_addr = 0;
@@ -198,7 +206,7 @@ int wmain(int argc, wchar_t* argv[]) {
             print_help();
             return 0;
         } else if (arg == L"-v" || arg == L"--version") {
-            std::wcout << L"vmemscan version 1.2.0\n";
+            std::wcout << L"vmemscan version 1.3.0\n";
             return 0;
         } else if (arg == L"-p" || arg == L"--pid") {
             if (i + 1 < argc) target_pid = static_cast<uint32_t>(_wtoi(argv[++i]));
@@ -260,6 +268,10 @@ int wmain(int argc, wchar_t* argv[]) {
             mode_sections = true;
         } else if (arg == L"--unwind") {
             mode_unwind = true;
+        } else if (arg == L"--fibers") {
+            mode_fibers = true;
+        } else if (arg == L"--clr") {
+            mode_clr = true;
         } else if (arg == L"--score") {
             mode_score = true;
         } else if (arg == L"--iocs") {
@@ -613,6 +625,22 @@ int wmain(int argc, wchar_t* argv[]) {
         return 0;
     }
 
+    if (mode_fibers) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto fib_rep = FiberAuditor::audit_process(hProcess, target_proc.pid);
+        Formatter::print_fiber_report(fib_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_clr) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto clr_rep = ClrAuditor::audit_process(hProcess, target_proc.pid);
+        Formatter::print_clr_report(clr_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
     if (mode_score) {
         if (!output_json && !output_csv) Formatter::print_banner();
         auto c2_rep = C2Detector::scan_process_c2(hProcess, target_proc.pid, target_proc.name, regions);
@@ -631,6 +659,8 @@ int wmain(int argc, wchar_t* argv[]) {
         auto tls_rep = TlsAuditor::audit_process_tls(hProcess, target_proc.pid, target_proc.name, regions);
         auto sec_rep = SectionAuditor::audit_process_sections(hProcess, target_proc.pid, target_proc.name, regions);
         auto unw_rep = UnwindAuditor::audit_process_unwind(hProcess, target_proc.pid, target_proc.name, regions);
+        auto fib_rep = FiberAuditor::audit_process(hProcess, target_proc.pid);
+        auto clr_rep = ClrAuditor::audit_process(hProcess, target_proc.pid);
         auto patch_rep = PatchDetector::audit_process_patches(hProcess, target_proc.pid, target_proc.name);
         auto iat_rep = IatHookDetector::audit_process_iat(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit, regions, hol_rep.in_memory_image_base);
         auto mod_rep = ModuleAuditor::audit_process_modules(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
@@ -680,7 +710,9 @@ int wmain(int argc, wchar_t* argv[]) {
             pool_rep.pool_anomalies_count,
             tls_rep.anomalous_callbacks_count,
             sec_rep.anomalous_sections_count,
-            unw_rep.anomalous_frames_count
+            unw_rep.anomalous_frames_count,
+            fib_rep.anomalies.size(),
+            clr_rep.anomalies.size()
         );
 
         Formatter::print_risk_assessment(target_proc, risk);

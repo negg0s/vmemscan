@@ -2,8 +2,10 @@
 
 #include "vmemscan/anti_debug_auditor.hpp"
 #include "vmemscan/c2_detector.hpp"
+#include "vmemscan/clr_auditor.hpp"
 #include "vmemscan/common.hpp"
 #include "vmemscan/entropy_calculator.hpp"
+#include "vmemscan/fiber_auditor.hpp"
 #include "vmemscan/ghosting_detector.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
@@ -74,6 +76,8 @@ public:
     static void print_tls_report(const TlsAuditReport& report);
     static void print_sections_report(const SectionAuditReport& report);
     static void print_unwind_report(const UnwindAuditReport& report);
+    static void print_fiber_report(const FiberReport& report);
+    static void print_clr_report(const ClrAuditReport& report);
     static void print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk);
     static void print_pattern_matches(const std::vector<PatternMatch>& matches);
     static void print_dump_result(const DumpResult& res);

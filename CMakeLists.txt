@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(vmemscan
-    VERSION 1.2.0
+    VERSION 1.3.0
     LANGUAGES CXX
 )
 
@@ -49,8 +49,10 @@ endif()
 add_library(vmemscan_core STATIC
     include/vmemscan/anti_debug_auditor.hpp
     include/vmemscan/c2_detector.hpp
+    include/vmemscan/clr_auditor.hpp
     include/vmemscan/common.hpp
     include/vmemscan/entropy_calculator.hpp
+    include/vmemscan/fiber_auditor.hpp
     include/vmemscan/formatter.hpp
     include/vmemscan/ghosting_detector.hpp
     include/vmemscan/hook_detector.hpp
@@ -86,7 +88,9 @@ add_library(vmemscan_core STATIC
 
     src/anti_debug_auditor.cpp
     src/c2_detector.cpp
+    src/clr_auditor.cpp
     src/entropy_calculator.cpp
+    src/fiber_auditor.cpp
     src/formatter.cpp
     src/ghosting_detector.cpp
     src/hook_detector.cpp

@@ -1,7 +1,9 @@
 #include "vmemscan/anti_debug_auditor.hpp"
 #include "vmemscan/c2_detector.hpp"
+#include "vmemscan/clr_auditor.hpp"
 #include "vmemscan/common.hpp"
 #include "vmemscan/entropy_calculator.hpp"
+#include "vmemscan/fiber_auditor.hpp"
 #include "vmemscan/formatter.hpp"
 #include "vmemscan/ghosting_detector.hpp"
 #include "vmemscan/hook_detector.hpp"
@@ -1166,6 +1168,47 @@ void test_unwind_auditor_clean_frame() {
     check(anomalies.empty(), "all frames within valid functions produce zero anomalies");
 }
 
+void test_fiber_auditor_self() {
+    auto rep = FiberAuditor::audit_process(GetCurrentProcess(), GetCurrentProcessId());
+    check(rep.process_id == GetCurrentProcessId(), "fiber report pid matches current process");
+    check(rep.threads_examined > 0, "threads were examined for fibers");
+    check(rep.anomalies.empty(), "clean process has zero fiber anomalies");
+}
+
+void test_fiber_anomaly_strings() {
+    check(!FiberAuditor::anomaly_type_to_string(FiberAnomalyType::UnbackedFiberStart).empty(), "unbacked fiber start string");
+    check(!FiberAuditor::anomaly_type_to_string(FiberAnomalyType::RwxFiberStart).empty(), "rwx fiber start string");
+    check(!FiberAuditor::anomaly_type_to_string(FiberAnomalyType::UnbackedFiberStack).empty(), "unbacked fiber stack string");
+    check(!FiberAuditor::anomaly_type_to_string(FiberAnomalyType::UnbackedFlsCallback).empty(), "unbacked fls callback string");
+    check(!FiberAuditor::anomaly_type_to_string(FiberAnomalyType::RwxFlsCallback).empty(), "rwx fls callback string");
+}
+
+void test_clr_auditor_self() {
+    auto rep = ClrAuditor::audit_process(GetCurrentProcess(), GetCurrentProcessId());
+    check(rep.process_id == GetCurrentProcessId(), "clr report pid matches current process");
+    check(!rep.is_originally_managed, "self test binary is native Win32, not managed .NET");
+    check(!rep.has_clr_runtime, "self test binary does not load CLR runtime");
+    check(rep.anomalies.empty(), "clean native binary has zero CLR anomalies");
+}
+
+void test_clr_anomaly_strings() {
+    check(!ClrAuditor::anomaly_type_to_string(ClrAnomalyType::UnmanagedProcessClrLoaded).empty(), "unmanaged clr loaded string");
+    check(!ClrAuditor::anomaly_type_to_string(ClrAnomalyType::InMemoryDotNetAssembly).empty(), "in-memory dotnet assembly string");
+    check(!ClrAuditor::anomaly_type_to_string(ClrAnomalyType::RwxJitHeap).empty(), "rwx jit heap string");
+}
+
+void test_v130_risk_scorer_evaluation() {
+    auto risk = RiskScorer::compute_process_risk(
+        false, false, 0, 0, 0, 0, 0, 0, 0, 0, false,
+        0, 0, false, 0, 0, false, 0, false, 0, 0, 0, 0, 0,
+        1, // fiber anomaly (+40)
+        1  // clr anomaly (+45)
+    );
+    check(risk.total_score == 85, "fiber + clr anomalies produce score 85");
+    check(risk.verdict == ThreatVerdict::CriticalCompromised, "verdict is CriticalCompromised");
+    check(risk.risk_factors.size() == 2, "two risk factors recorded for fiber and clr");
+}
+
 int main() {
     std::wcout << L"[RUN] test_privileges_check\n";
     test_privileges_check();
@@ -1311,6 +1354,21 @@ int main() {
     std::wcout << L"[RUN] test_unwind_auditor_clean_frame\n";
     test_unwind_auditor_clean_frame();
 
-    std::wcout << L"All 48 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_fiber_auditor_self\n";
+    test_fiber_auditor_self();
+
+    std::wcout << L"[RUN] test_fiber_anomaly_strings\n";
+    test_fiber_anomaly_strings();
+
+    std::wcout << L"[RUN] test_clr_auditor_self\n";
+    test_clr_auditor_self();
+
+    std::wcout << L"[RUN] test_clr_anomaly_strings\n";
+    test_clr_anomaly_strings();
+
+    std::wcout << L"[RUN] test_v130_risk_scorer_evaluation\n";
+    test_v130_risk_scorer_evaluation();
+
+    std::wcout << L"All 53 unit test suites passed successfully.\n";
     return 0;
 }
