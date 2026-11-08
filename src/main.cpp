@@ -2,6 +2,7 @@
 #include "vmemscan/common.hpp"
 #include "vmemscan/entropy_calculator.hpp"
 #include "vmemscan/formatter.hpp"
+#include "vmemscan/ghosting_detector.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/iat_hook_detector.hpp"
@@ -11,6 +12,7 @@
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/memory_scanner.hpp"
 #include "vmemscan/module_auditor.hpp"
+#include "vmemscan/module_stomping_detector.hpp"
 #include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
 #include "vmemscan/peb_auditor.hpp"
@@ -51,6 +53,8 @@ static void print_help() {
     std::wcout << L"  --hooks                  Audit inline API hooks in loaded system libraries\n";
     std::wcout << L"  --patches                Audit telemetry bypasses (ETW and AMSI in-memory patches)\n";
     std::wcout << L"  --hollowing              Audit process hollowing and PE entry point integrity\n";
+    std::wcout << L"  --ghosting               Audit process ghosting, herpaderping, and deleted backing file execution\n";
+    std::wcout << L"  --stomping               Audit loaded modules for code section (.text) overwrites and stomping\n";
     std::wcout << L"  --threads                Audit thread start addresses and instruction pointers (RIP/EIP)\n";
     std::wcout << L"  --modules                Audit loaded modules for stealth PEB unlinking and suspicious paths\n";
     std::wcout << L"  --entropy                Audit memory entropy to uncover encrypted/packed payload buffers\n";
@@ -91,6 +95,8 @@ static void print_help() {
     std::wcout << L"  vmemscan -p 1234 --stack\n";
     std::wcout << L"  vmemscan -p 1234 --score\n";
     std::wcout << L"  vmemscan -p 1234 --hollowing\n";
+    std::wcout << L"  vmemscan -p 1234 --ghosting\n";
+    std::wcout << L"  vmemscan -p 1234 --stomping\n";
     std::wcout << L"  vmemscan -p 1234 --save-snapshot baseline.json\n";
     std::wcout << L"  vmemscan -p 1234 --diff-snapshot baseline.json\n";
     std::wcout << L"  vmemscan -p 1234 -m --only-unbacked\n";
@@ -112,6 +118,8 @@ int wmain(int argc, wchar_t* argv[]) {
     bool mode_hooks = false;
     bool mode_patches = false;
     bool mode_hollowing = false;
+    bool mode_ghosting = false;
+    bool mode_stomping = false;
     bool mode_entropy = false;
     bool mode_threads = false;
     bool mode_modules = false;
@@ -150,7 +158,7 @@ int wmain(int argc, wchar_t* argv[]) {
             print_help();
             return 0;
         } else if (arg == L"-v" || arg == L"--version") {
-            std::wcout << L"vmemscan version 0.6.0\n";
+            std::wcout << L"vmemscan version 0.7.0\n";
             return 0;
         } else if (arg == L"-p" || arg == L"--pid") {
             if (i + 1 < argc) target_pid = static_cast<uint32_t>(_wtoi(argv[++i]));
@@ -170,6 +178,10 @@ int wmain(int argc, wchar_t* argv[]) {
             mode_patches = true;
         } else if (arg == L"--hollowing") {
             mode_hollowing = true;
+        } else if (arg == L"--ghosting") {
+            mode_ghosting = true;
+        } else if (arg == L"--stomping") {
+            mode_stomping = true;
         } else if (arg == L"--threads") {
             mode_threads = true;
         } else if (arg == L"--modules") {
@@ -373,6 +385,22 @@ int wmain(int argc, wchar_t* argv[]) {
         return 0;
     }
 
+    if (mode_ghosting) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto ghost_rep = GhostingDetector::audit_process_ghosting(hProcess, target_proc.pid, target_proc.name, target_proc.path, 0, target_proc.is_64bit);
+        Formatter::print_ghosting_report(ghost_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_stomping) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto stomp_rep = ModuleStompingDetector::audit_process_module_stomping(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
+        Formatter::print_module_stomping_report(stomp_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
     if (mode_threads) {
         if (!output_json && !output_csv) Formatter::print_banner();
         auto th_rep = ThreadAnalyzer::audit_process_threads(hProcess, target_proc.pid, target_proc.name, regions);
@@ -458,6 +486,8 @@ int wmain(int argc, wchar_t* argv[]) {
         auto mod_rep = ModuleAuditor::audit_process_modules(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
         auto ent_rep = EntropyCalculator::audit_process_entropy(hProcess, regions);
         auto peb_rep = PebAuditor::audit_process_peb(hProcess, target_proc.pid, target_proc.name, target_proc.path, target_proc.is_64bit);
+        auto ghost_rep = GhostingDetector::audit_process_ghosting(hProcess, target_proc.pid, target_proc.name, target_proc.path, hol_rep.in_memory_image_base, target_proc.is_64bit);
+        auto stomp_rep = ModuleStompingDetector::audit_process_module_stomping(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
 
         size_t unbacked_exec_count = 0;
         size_t rwx_count = 0;
@@ -484,7 +514,9 @@ int wmain(int argc, wchar_t* argv[]) {
             high_entropy_count,
             !peb_rep.anomalies.empty(),
             stk_rep.unbacked_frames_count,
-            isc_rep.anomalies_count
+            isc_rep.anomalies_count,
+            ghost_rep.is_ghosted || ghost_rep.is_herpaderped,
+            stomp_rep.stomped_modules_count
         );
 
         Formatter::print_risk_assessment(target_proc, risk);

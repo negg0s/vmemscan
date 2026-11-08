@@ -27,7 +27,9 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     size_t high_entropy_regions_count,
     bool has_argument_spoofing,
     size_t unbacked_stack_frames_count,
-    size_t indirect_syscalls_count
+    size_t indirect_syscalls_count,
+    bool is_ghosted,
+    size_t stomped_modules_count
 ) {
     RiskScoreBreakdown r{};
     uint32_t score = 0;
@@ -35,6 +37,11 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     if (has_c2_beacon) {
         score += 50;
         r.risk_factors.push_back(L"Embedded C2 beacon configuration discovered (+50)");
+    }
+
+    if (is_ghosted) {
+        score += 45;
+        r.risk_factors.push_back(L"Process Ghosting / Herpaderping backing file anomaly detected (+45)");
     }
 
     if (is_hollowed) {
@@ -45,6 +52,11 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     if (unbacked_stack_frames_count > 0) {
         score += 40;
         r.risk_factors.push_back(L"Thread call stack contains return address pointing to unbacked memory (+40)");
+    }
+
+    if (stomped_modules_count > 0) {
+        score += 35;
+        r.risk_factors.push_back(L"Module Stomping / loaded DLL code section overwrite detected (+35)");
     }
 
     if (indirect_syscalls_count > 0) {

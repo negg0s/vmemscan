@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-11-08
+
+### Added
+- Process ghosting and file tampering auditor (--ghosting): inspects target process backing executable files for Process Ghosting (DeletePending active while running in memory) and Process Herpaderping (disk binary overwritten with non-PE content or swapped after section mapping).
+- Module stomping and code section integrity auditor (--stomping): scans all loaded modules, comparing in-memory .text code sections against on-disk PE binaries to uncover in-memory overwrites, phantom DLL loading, and code section tampering.
+- Integrated process ghosting and module stomping metrics into unified forensic risk scoring engine (+45 for ghosting/herpaderping, +35 for stomped modules).
+- Expanded automated unit test suite from 27 to 30 test suites.
+
 ## [0.6.0] - 2026-11-08
 
 ### Added

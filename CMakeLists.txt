@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(vmemscan
-    VERSION 0.6.0
+    VERSION 0.7.0
     LANGUAGES CXX
 )
 
@@ -51,6 +51,7 @@ add_library(vmemscan_core STATIC
     include/vmemscan/common.hpp
     include/vmemscan/entropy_calculator.hpp
     include/vmemscan/formatter.hpp
+    include/vmemscan/ghosting_detector.hpp
     include/vmemscan/hook_detector.hpp
     include/vmemscan/hollowing_detector.hpp
     include/vmemscan/iat_hook_detector.hpp
@@ -60,6 +61,7 @@ add_library(vmemscan_core STATIC
     include/vmemscan/memory_dumper.hpp
     include/vmemscan/memory_scanner.hpp
     include/vmemscan/module_auditor.hpp
+    include/vmemscan/module_stomping_detector.hpp
     include/vmemscan/nt_defs.hpp
     include/vmemscan/patch_detector.hpp
     include/vmemscan/pattern_scanner.hpp
@@ -75,6 +77,7 @@ add_library(vmemscan_core STATIC
     src/c2_detector.cpp
     src/entropy_calculator.cpp
     src/formatter.cpp
+    src/ghosting_detector.cpp
     src/hook_detector.cpp
     src/hollowing_detector.cpp
     src/iat_hook_detector.cpp
@@ -84,6 +87,7 @@ add_library(vmemscan_core STATIC
     src/memory_dumper.cpp
     src/memory_scanner.cpp
     src/module_auditor.cpp
+    src/module_stomping_detector.cpp
     src/patch_detector.cpp
     src/pattern_scanner.cpp
     src/peb_auditor.cpp

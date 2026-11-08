@@ -2,6 +2,7 @@
 #include "vmemscan/common.hpp"
 #include "vmemscan/entropy_calculator.hpp"
 #include "vmemscan/formatter.hpp"
+#include "vmemscan/ghosting_detector.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/iat_hook_detector.hpp"
@@ -11,6 +12,7 @@
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/memory_scanner.hpp"
 #include "vmemscan/module_auditor.hpp"
+#include "vmemscan/module_stomping_detector.hpp"
 #include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
 #include "vmemscan/peb_auditor.hpp"
@@ -571,11 +573,66 @@ void test_extended_risk_scorer() {
     auto risk = RiskScorer::compute_process_risk(
         false, false, 0, 0, 0, 0, 0, 0, 0, 0, false,
         1, // unbacked stack frame (+40)
-        1  // indirect syscall (+35)
+        1, // indirect syscall (+35)
+        true, // ghosting (+45)
+        1 // stomping (+35)
     );
-    check(risk.total_score == 75, "risk score with stack and indirect syscalls is 75");
-    check(risk.verdict == ThreatVerdict::Suspicious, "verdict is Suspicious");
-    check(risk.risk_factors.size() == 2, "two risk factors recorded");
+    check(risk.total_score == 100, "risk score capped at 100");
+    check(risk.verdict == ThreatVerdict::CriticalCompromised, "verdict is CriticalCompromised");
+    check(risk.risk_factors.size() == 4, "four risk factors recorded");
+}
+
+void test_ghosting_detector_self() {
+    wchar_t self_path[MAX_PATH]{0};
+    GetModuleFileNameW(nullptr, self_path, MAX_PATH);
+
+    auto rep = GhostingDetector::audit_process_ghosting(
+        GetCurrentProcess(),
+        GetCurrentProcessId(),
+        L"vmemscan_tests.exe",
+        self_path,
+        reinterpret_cast<uint64_t>(GetModuleHandleW(nullptr)),
+        sizeof(void*) == 8
+    );
+
+    check(!rep.is_ghosted, "self binary is not ghosted");
+    check(!rep.is_herpaderped, "self binary is not herpaderped");
+    check(rep.anomalies.empty(), "self binary has zero ghosting anomalies");
+}
+
+void test_module_stomping_comparison() {
+    // 1. Identical buffers
+    uint8_t b1[32]{0};
+    uint8_t b2[32]{0};
+    for (int i = 0; i < 32; ++i) { b1[i] = static_cast<uint8_t>(i); b2[i] = static_cast<uint8_t>(i); }
+    size_t div1 = 0;
+    check(!ModuleStompingDetector::compare_section_prologue(b1, b2, 32, div1), "identical bytes not stomped");
+    check(div1 == 0, "zero divergence count");
+
+    // 2. Trampoline overwrite (first byte changed to JMP 0xE9)
+    uint8_t b3[32]{0};
+    b3[0] = 0xE9;
+    size_t div2 = 0;
+    check(ModuleStompingDetector::compare_section_prologue(b1, b3, 32, div2), "JMP overwrite flagged as stomped");
+
+    // 3. Heavy divergence (>= 16 bytes altered)
+    uint8_t b4[32]{0};
+    for (int i = 0; i < 20; ++i) { b4[i] = 0x90; }
+    size_t div3 = 0;
+    check(ModuleStompingDetector::compare_section_prologue(b1, b4, 32, div3), "16+ byte divergence flagged as stomped");
+    check(div3 >= 16, "divergence >= 16");
+}
+
+void test_module_stomping_self() {
+    auto rep = ModuleStompingDetector::audit_process_module_stomping(
+        GetCurrentProcess(),
+        GetCurrentProcessId(),
+        L"vmemscan_tests.exe",
+        sizeof(void*) == 8
+    );
+
+    check(rep.modules_evaluated > 0, "evaluated loaded modules in self process");
+    check(rep.stomped_modules_count == 0, "clean self process has zero stomped modules");
 }
 
 int main() {
@@ -660,6 +717,15 @@ int main() {
     std::wcout << L"[RUN] test_extended_risk_scorer\n";
     test_extended_risk_scorer();
 
-    std::wcout << L"All 27 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_ghosting_detector_self\n";
+    test_ghosting_detector_self();
+
+    std::wcout << L"[RUN] test_module_stomping_comparison\n";
+    test_module_stomping_comparison();
+
+    std::wcout << L"[RUN] test_module_stomping_self\n";
+    test_module_stomping_self();
+
+    std::wcout << L"All 30 unit test suites passed successfully.\n";
     return 0;
 }

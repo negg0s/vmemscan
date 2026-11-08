@@ -21,6 +21,8 @@ Written in modern C++20 and pure Win32 / NT Native API. Zero external dependenci
 - **Inline API Hook Detection**: Compares in-memory instruction bytes of critical system APIs in `ntdll.dll` against clean disk bytes, detecting relative jumps, indirect jumps, and user-mode rootkit hooks.
 - **Security Telemetry Patch Detection**: Audits in-memory tampering of Event Tracing for Windows (ETW: `EtwEventWrite`, `EtwEventWriteFull`, `NtTraceEvent`) and Antimalware Scan Interface (AMSI: `AmsiScanBuffer`, `AmsiScanString`, `AmsiOpenSession`) security functions.
 - **Process Hollowing & Header Stomping Forensics**: Queries the remote PEB to extract `ImageBaseAddress`, compares in-memory entry points and image size against on-disk PE headers, and inspects entry points for redirection stubs.
+- **Process Ghosting & Herpaderping Forensics**: Audits target backing executable files for Process Ghosting (`DeletePending` active on running executable) and Process Herpaderping (on-disk file overwritten with non-PE data or replaced after image mapping).
+- **Module Stomping & Code Section Integrity**: Compares in-memory `.text` code section bytes of all loaded modules against clean on-disk files, detecting phantom DLL loading and unbacked code hidden in image sections.
 - **Direct Syscall & EDR Bypass Audit**: Scans executable memory regions for direct syscall stubs (Syswhispers, Hell's Gate, Halo's Gate) and standalone syscall instructions residing outside `ntdll.dll` / `win32u.dll`, extracting System Service Numbers (SSN).
 - **Indirect Syscall & Trampoline Audit**: Identifies indirect syscall trampolines (Syswhispers3, Tartarus' Gate, Hell's Hall) that set up SSN and jump into `ntdll.dll` / `win32u.dll` to evade call instruction inspection.
 - **Import Address Table (IAT) Hook Detection**: Traverses remote PE import descriptors and IAT thunks, identifying pointers redirected to unbacked private memory or RWX pages.
@@ -71,6 +73,8 @@ Analysis Modes:
   --hooks                  Audit inline API hooks in loaded system libraries
   --patches                Audit telemetry bypasses (ETW and AMSI in-memory patches)
   --hollowing              Audit process hollowing and PE entry point integrity
+  --ghosting               Audit process ghosting, herpaderping, and deleted backing file execution
+  --stomping               Audit loaded modules for code section (.text) overwrites and stomping
   --threads                Audit thread start addresses and instruction pointers (RIP/EIP)
   --modules                Audit loaded modules for stealth PEB unlinking and suspicious paths
   --entropy                Audit memory entropy to uncover encrypted/packed payload buffers
@@ -131,6 +135,12 @@ vmemscan -p 1234 --patches
 
 # Verify PE headers and entry point against on-disk image to detect hollowing
 vmemscan -p 1234 --hollowing
+
+# Audit backing executable file for Process Ghosting and Herpaderping
+vmemscan -p 1234 --ghosting
+
+# Audit loaded modules for in-memory code section stomping and phantom DLLs
+vmemscan -p 1234 --stomping
 
 # Audit thread execution pointers to detect unbacked and RWX execution
 vmemscan -p 1234 --threads

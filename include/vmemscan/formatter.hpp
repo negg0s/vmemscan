@@ -3,6 +3,7 @@
 #include "vmemscan/c2_detector.hpp"
 #include "vmemscan/common.hpp"
 #include "vmemscan/entropy_calculator.hpp"
+#include "vmemscan/ghosting_detector.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/iat_hook_detector.hpp"
@@ -11,6 +12,7 @@
 #include "vmemscan/ioc_extractor.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/module_auditor.hpp"
+#include "vmemscan/module_stomping_detector.hpp"
 #include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
 #include "vmemscan/peb_auditor.hpp"
@@ -50,6 +52,8 @@ public:
     static void print_indirect_syscall_report(const IndirectSyscallReport& report);
     static void print_iat_report(const IatHookReport& report);
     static void print_stack_report(const StackAuditReport& report);
+    static void print_ghosting_report(const GhostingReport& report);
+    static void print_module_stomping_report(const ModuleStompingReport& report);
     static void print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk);
     static void print_pattern_matches(const std::vector<PatternMatch>& matches);
     static void print_dump_result(const DumpResult& res);

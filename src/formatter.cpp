@@ -633,6 +633,59 @@ void Formatter::print_stack_report(const StackAuditReport& report) {
     std::wcout << L"====================================================================================================\n\n";
 }
 
+void Formatter::print_ghosting_report(const GhostingReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" PROCESS GHOSTING & FILE TAMPERING AUDIT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Backing Disk Path : " << (report.disk_path.empty() ? L"Unknown" : report.disk_path) << L"\n";
+    std::wcout << L"  Ghosting Status   : " << (report.is_ghosted ? L"DETECTED (Backing file deleted / DeletePending active) [!]" : L"Clean (Disk file intact)") << L"\n";
+    std::wcout << L"  Herpaderping      : " << (report.is_herpaderped ? L"DETECTED (Disk content replaced post-mapping) [!]" : L"Clean (Headers match disk)") << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty()) {
+        std::wcout << L"  Zero process ghosting or herpaderping anomalies detected. Backing executable file is verified.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [" << (a.is_critical ? L"CRITICAL GHOSTING ANOMALY" : L"GHOSTING WARNING") << L"] " << a.anomaly_type << L"\n";
+            std::wcout << L"    Disk Path : " << a.disk_path << L"\n";
+            std::wcout << L"    Details   : " << a.details << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_module_stomping_report(const ModuleStompingReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" MODULE STOMPING & CODE SECTION INTEGRITY AUDIT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Loaded Modules Evaluated: " << report.modules_evaluated << L"\n";
+    std::wcout << L"  Stomped Modules Detected: " << report.stomped_modules_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.stomped_modules_count == 0) {
+        std::wcout << L"  Zero module stomping anomalies detected. Code sections match clean on-disk files.\n";
+    } else {
+        for (const auto& f : report.findings) {
+            std::wcout << L"  [STOMPED MODULE DETECTED] " << f.module_name << L"\n";
+            std::wcout << L"    Base Address      : " << to_hex_string(f.module_base) << L"\n";
+            std::wcout << L"    Section Name      : " << std::wstring(f.section_name.begin(), f.section_name.end()) << L"\n";
+            std::wcout << L"    Section Address   : " << to_hex_string(f.section_address) << L"\n";
+            std::wcout << L"    Divergent Bytes   : " << f.bytes_divergent << L" bytes altered\n";
+            std::wcout << L"    Anomaly Type      : " << f.stomping_type << L"\n";
+            if (!f.in_memory_bytes.empty()) {
+                std::wcout << L"    In-Memory Bytes   : " << bytes_to_hex_preview(f.in_memory_bytes) << L"\n";
+            }
+            if (!f.on_disk_bytes.empty()) {
+                std::wcout << L"    On-Disk Bytes     : " << bytes_to_hex_preview(f.on_disk_bytes) << L"\n";
+            }
+            std::wcout << L"\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 void Formatter::print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk) {
     std::wcout << L"\n";
     std::wcout << L"====================================================================================================\n";
