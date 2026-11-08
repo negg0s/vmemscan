@@ -31,7 +31,9 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     bool is_ghosted,
     size_t stomped_modules_count,
     size_t sleep_masked_regions_count,
-    bool has_anti_debug
+    bool has_anti_debug,
+    size_t wiped_pe_headers_count,
+    bool has_mitigation_breach
 ) {
     RiskScoreBreakdown r{};
     uint32_t score = 0;
@@ -59,6 +61,16 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     if (unbacked_stack_frames_count > 0) {
         score += 40;
         r.risk_factors.push_back(L"Thread call stack contains return address pointing to unbacked memory (+40)");
+    }
+
+    if (wiped_pe_headers_count > 0) {
+        score += 40;
+        r.risk_factors.push_back(L"Wiped or obfuscated PE headers (DOS header erased in unbacked memory) (+40)");
+    }
+
+    if (has_mitigation_breach) {
+        score += 15;
+        r.risk_factors.push_back(L"Exploit mitigation policy inconsistency (dynamic executable code permitted) (+15)");
     }
 
     if (has_anti_debug) {

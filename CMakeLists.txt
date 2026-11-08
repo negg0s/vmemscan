@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(vmemscan
-    VERSION 0.8.0
+    VERSION 0.9.0
     LANGUAGES CXX
 )
 
@@ -61,6 +61,7 @@ add_library(vmemscan_core STATIC
     include/vmemscan/ioc_extractor.hpp
     include/vmemscan/memory_dumper.hpp
     include/vmemscan/memory_scanner.hpp
+    include/vmemscan/mitigations_auditor.hpp
     include/vmemscan/module_auditor.hpp
     include/vmemscan/module_stomping_detector.hpp
     include/vmemscan/nt_defs.hpp
@@ -75,6 +76,7 @@ add_library(vmemscan_core STATIC
     include/vmemscan/stack_auditor.hpp
     include/vmemscan/syscall_auditor.hpp
     include/vmemscan/thread_analyzer.hpp
+    include/vmemscan/wiped_pe_detector.hpp
 
     src/anti_debug_auditor.cpp
     src/c2_detector.cpp
@@ -89,6 +91,7 @@ add_library(vmemscan_core STATIC
     src/ioc_extractor.cpp
     src/memory_dumper.cpp
     src/memory_scanner.cpp
+    src/mitigations_auditor.cpp
     src/module_auditor.cpp
     src/module_stomping_detector.cpp
     src/patch_detector.cpp
@@ -102,6 +105,7 @@ add_library(vmemscan_core STATIC
     src/stack_auditor.cpp
     src/syscall_auditor.cpp
     src/thread_analyzer.cpp
+    src/wiped_pe_detector.cpp
 )
 
 target_include_directories(vmemscan_core PUBLIC include)

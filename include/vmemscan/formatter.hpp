@@ -12,6 +12,7 @@
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/ioc_extractor.hpp"
 #include "vmemscan/memory_dumper.hpp"
+#include "vmemscan/mitigations_auditor.hpp"
 #include "vmemscan/module_auditor.hpp"
 #include "vmemscan/module_stomping_detector.hpp"
 #include "vmemscan/patch_detector.hpp"
@@ -23,6 +24,7 @@
 #include "vmemscan/stack_auditor.hpp"
 #include "vmemscan/syscall_auditor.hpp"
 #include "vmemscan/thread_analyzer.hpp"
+#include "vmemscan/wiped_pe_detector.hpp"
 
 #include <string>
 #include <vector>
@@ -58,6 +60,8 @@ public:
     static void print_module_stomping_report(const ModuleStompingReport& report);
     static void print_sleep_mask_report(const SleepMaskReport& report);
     static void print_anti_debug_report(const AntiDebugReport& report);
+    static void print_wiped_pe_report(const WipedPeReport& report);
+    static void print_mitigations_report(const ProcessMitigationsReport& report);
     static void print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk);
     static void print_pattern_matches(const std::vector<PatternMatch>& matches);
     static void print_dump_result(const DumpResult& res);

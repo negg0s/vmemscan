@@ -733,6 +733,62 @@ void Formatter::print_anti_debug_report(const AntiDebugReport& report) {
     std::wcout << L"====================================================================================================\n\n";
 }
 
+void Formatter::print_wiped_pe_report(const WipedPeReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" WIPED & OBFUSCATED PE HEADER FORENSICS: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Regions Evaluated         : " << report.regions_scanned << L"\n";
+    std::wcout << L"  Wiped PE Headers Detected : " << report.wiped_pe_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.wiped_pe_count == 0) {
+        std::wcout << L"  Zero wiped PE headers detected. No hidden in-memory PE structures found.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [WIPED PE DETECTED] Region Base: " << to_hex_string(a.region_base) << L"\n";
+            std::wcout << L"    NT Headers Offset : +" << to_hex_string(a.nt_headers_offset, 4) << L"\n";
+            std::wcout << L"    Architecture      : 0x" << std::hex << a.machine_architecture << std::dec;
+            if (a.machine_architecture == IMAGE_FILE_MACHINE_AMD64) std::wcout << L" (x64 / AMD64)";
+            else if (a.machine_architecture == IMAGE_FILE_MACHINE_I386) std::wcout << L" (x86 / i386)";
+            else if (a.machine_architecture == IMAGE_FILE_MACHINE_ARM64) std::wcout << L" (ARM64)";
+            std::wcout << L"\n";
+            std::wcout << L"    Sections          : " << a.section_count << L"\n";
+            std::wcout << L"    Memory Protection : " << a.protection_string << L"\n";
+            std::wcout << L"    DOS Magic Wiped   : " << (a.dos_header_wiped ? L"TRUE (MZ signature erased) [!]" : L"False") << L"\n";
+            std::wcout << L"    Section Names     : " << (a.section_names_scrambled ? L"SCRAMBLED / OBFUSCATED [!]" : L"Standard") << L"\n";
+            std::wcout << L"    Details           : " << a.anomaly_description << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_mitigations_report(const ProcessMitigationsReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" PROCESS SECURITY MITIGATIONS & EXPLOIT DEFENSE: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Data Execution Prevention (DEP) : " << (report.dep_enabled ? L"Enforced" : L"DISABLED [!]") << L"\n";
+    std::wcout << L"  Control Flow Guard (CFG)        : " << (report.cfg_enabled ? L"Enforced" : L"Disabled") << L"\n";
+    std::wcout << L"  Arbitrary Code Guard (ACG)      : " << (report.acg_prohibit_dynamic_code ? L"Enforced (Dynamic Code Prohibited)" : L"Disabled (Dynamic Code Permitted)") << L"\n";
+    std::wcout << L"  Microsoft Binaries Only         : " << (report.msft_signed_only ? L"Enforced" : L"Standard") << L"\n";
+    std::wcout << L"  Remote Images Blocked           : " << (report.no_remote_images ? L"Enforced" : L"Permitted") << L"\n";
+    std::wcout << L"  Child Processes Blocked         : " << (report.no_child_processes ? L"Blocked" : L"Permitted") << L"\n";
+    std::wcout << L"  Strict Handle Checks            : " << (report.strict_handle_checks ? L"Enforced" : L"Standard") << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.policies.empty()) {
+        std::wcout << L"  Unable to query process mitigation policies (Insufficient privileges or system process).\n";
+    } else {
+        std::wcout << L"  Active Exploit Mitigation Policies:\n";
+        for (const auto& p : report.policies) {
+            std::wcout << L"    [*] " << p.policy_name << L": " << p.status_text << L"\n";
+            std::wcout << L"        " << p.description << L"\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 void Formatter::print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk) {
     std::wcout << L"\n";
     std::wcout << L"====================================================================================================\n";

@@ -12,6 +12,7 @@
 #include "vmemscan/ioc_extractor.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/memory_scanner.hpp"
+#include "vmemscan/mitigations_auditor.hpp"
 #include "vmemscan/module_auditor.hpp"
 #include "vmemscan/module_stomping_detector.hpp"
 #include "vmemscan/patch_detector.hpp"
@@ -25,6 +26,7 @@
 #include "vmemscan/stack_auditor.hpp"
 #include "vmemscan/syscall_auditor.hpp"
 #include "vmemscan/thread_analyzer.hpp"
+#include "vmemscan/wiped_pe_detector.hpp"
 
 #include <cassert>
 #include <iostream>
@@ -712,6 +714,85 @@ void test_v080_risk_scorer_evaluation() {
     check(!risk.risk_factors.empty(), "risk factors list is populated");
 }
 
+void test_wiped_pe_synthetic() {
+    std::vector<uint8_t> buf(1024, 0);
+
+    // Erased DOS header: buffer[0] and buffer[1] are zero
+    buf[0] = 0x00;
+    buf[1] = 0x00;
+
+    // PE signature at offset 0x80
+    size_t pe_offset = 0x80;
+    buf[pe_offset] = 'P';
+    buf[pe_offset + 1] = 'E';
+    buf[pe_offset + 2] = '\0';
+    buf[pe_offset + 3] = '\0';
+
+    // COFF File Header at pe_offset + 4
+    IMAGE_FILE_HEADER file_hdr{};
+    file_hdr.Machine = IMAGE_FILE_MACHINE_AMD64;
+    file_hdr.NumberOfSections = 4;
+    file_hdr.SizeOfOptionalHeader = sizeof(IMAGE_OPTIONAL_HEADER64);
+    file_hdr.Characteristics = IMAGE_FILE_EXECUTABLE_IMAGE | IMAGE_FILE_DLL;
+    std::memcpy(&buf[pe_offset + 4], &file_hdr, sizeof(IMAGE_FILE_HEADER));
+
+    // Optional Header Magic at pe_offset + 4 + sizeof(IMAGE_FILE_HEADER)
+    uint16_t opt_magic = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+    size_t opt_offset = pe_offset + 4 + sizeof(IMAGE_FILE_HEADER);
+    std::memcpy(&buf[opt_offset], &opt_magic, sizeof(uint16_t));
+
+    auto anomalies = WipedPeDetector::scan_region_for_wiped_pe(
+        buf.data(), buf.size(), 0x140000000, PAGE_EXECUTE_READ, MEM_PRIVATE
+    );
+
+    check(anomalies.size() == 1, "detected exactly 1 wiped PE header in region");
+    check(anomalies[0].region_base == 0x140000000, "correct region base flagged");
+    check(anomalies[0].dos_header_wiped, "dos_header_wiped is true");
+    check(anomalies[0].machine_architecture == IMAGE_FILE_MACHINE_AMD64, "machine is AMD64");
+    check(anomalies[0].section_count == 4, "section count is 4");
+}
+
+void test_wiped_pe_intact_mz_ignored() {
+    std::vector<uint8_t> buf(1024, 0);
+    // Intact MZ header
+    buf[0] = 'M';
+    buf[1] = 'Z';
+
+    size_t pe_offset = 0x80;
+    buf[pe_offset] = 'P';
+    buf[pe_offset + 1] = 'E';
+    buf[pe_offset + 2] = '\0';
+    buf[pe_offset + 3] = '\0';
+
+    IMAGE_FILE_HEADER file_hdr{};
+    file_hdr.Machine = IMAGE_FILE_MACHINE_AMD64;
+    file_hdr.NumberOfSections = 2;
+    file_hdr.SizeOfOptionalHeader = sizeof(IMAGE_OPTIONAL_HEADER64);
+    file_hdr.Characteristics = IMAGE_FILE_EXECUTABLE_IMAGE;
+    std::memcpy(&buf[pe_offset + 4], &file_hdr, sizeof(IMAGE_FILE_HEADER));
+
+    uint16_t opt_magic = IMAGE_NT_OPTIONAL_HDR64_MAGIC;
+    std::memcpy(&buf[pe_offset + 4 + sizeof(IMAGE_FILE_HEADER)], &opt_magic, sizeof(uint16_t));
+
+    auto anomalies = WipedPeDetector::scan_region_for_wiped_pe(
+        buf.data(), buf.size(), 0x140000000, PAGE_EXECUTE_READ, MEM_PRIVATE
+    );
+
+    check(anomalies.empty(), "intact MZ header ignored by wiped PE scanner");
+}
+
+void test_mitigations_auditor_self() {
+    auto rep = MitigationsAuditor::audit_process_mitigations(
+        GetCurrentProcess(),
+        GetCurrentProcessId(),
+        L"vmemscan_tests.exe"
+    );
+
+    check(rep.pid == GetCurrentProcessId(), "self pid matches in mitigations audit");
+    check(rep.process_name == L"vmemscan_tests.exe", "process name matches in mitigations audit");
+    check(!rep.policies.empty(), "successfully retrieved exploit mitigation policies");
+}
+
 int main() {
     std::wcout << L"[RUN] test_privileges_check\n";
     test_privileges_check();
@@ -812,6 +893,15 @@ int main() {
     std::wcout << L"[RUN] test_v080_risk_scorer_evaluation\n";
     test_v080_risk_scorer_evaluation();
 
-    std::wcout << L"All 33 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_wiped_pe_synthetic\n";
+    test_wiped_pe_synthetic();
+
+    std::wcout << L"[RUN] test_wiped_pe_intact_mz_ignored\n";
+    test_wiped_pe_intact_mz_ignored();
+
+    std::wcout << L"[RUN] test_mitigations_auditor_self\n";
+    test_mitigations_auditor_self();
+
+    std::wcout << L"All 36 unit test suites passed successfully.\n";
     return 0;
 }

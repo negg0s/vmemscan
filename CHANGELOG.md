@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0] - 2026-11-08
+
+### Added
+- Wiped and obfuscated PE header detector (--wiped-pe): scans committed private memory regions for in-memory PE structures whose DOS headers (MZ magic) have been erased or whose section names have been scrambled to defeat memory scanners and reflective PE carvers.
+- Process security mitigations and exploit defense auditor (--mitigations): queries GetProcessMitigationPolicy to inspect Data Execution Prevention (DEP), Control Flow Guard (CFG), Arbitrary Code Guard (ACG), binary signature enforcement, child process restrictions, and strict handle checking.
+- Integrated wiped PE headers (+40) and exploit mitigation inconsistencies (+15) into the unified forensic risk scoring engine.
+- Expanded automated unit test suite from 33 to 36 test suites.
+
 ## [0.8.0] - 2026-11-08
 
 ### Added

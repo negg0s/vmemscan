@@ -12,6 +12,7 @@
 #include "vmemscan/ioc_extractor.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/memory_scanner.hpp"
+#include "vmemscan/mitigations_auditor.hpp"
 #include "vmemscan/module_auditor.hpp"
 #include "vmemscan/module_stomping_detector.hpp"
 #include "vmemscan/patch_detector.hpp"
@@ -25,6 +26,7 @@
 #include "vmemscan/stack_auditor.hpp"
 #include "vmemscan/syscall_auditor.hpp"
 #include "vmemscan/thread_analyzer.hpp"
+#include "vmemscan/wiped_pe_detector.hpp"
 
 #include <iostream>
 #include <string>
@@ -68,6 +70,8 @@ static void print_help() {
     std::wcout << L"  --stack                  Audit thread call stacks for unbacked return addresses and spoofing\n";
     std::wcout << L"  --sleep-mask             Audit sleeping threads for memory protection demotion (Ekko / Foliage evasion)\n";
     std::wcout << L"  --anti-debug             Audit anti-debugging flags, PEB BeingDebugged, and hardware breakpoints (DR0-DR7)\n";
+    std::wcout << L"  --wiped-pe               Audit memory regions for wiped DOS headers and obfuscated PE structures\n";
+    std::wcout << L"  --mitigations            Audit process security mitigations (DEP, ASLR, ACG, CFG, Child Process Policy)\n";
     std::wcout << L"  --score                  Compute unified forensic threat score (0-100) and risk assessment\n";
     std::wcout << L"  --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address\n";
     std::wcout << L"  --summary                Display virtual memory allocation statistics and breakdown\n\n";
@@ -99,6 +103,8 @@ static void print_help() {
     std::wcout << L"  vmemscan -p 1234 --stack\n";
     std::wcout << L"  vmemscan -p 1234 --sleep-mask\n";
     std::wcout << L"  vmemscan -p 1234 --anti-debug\n";
+    std::wcout << L"  vmemscan -p 1234 --wiped-pe\n";
+    std::wcout << L"  vmemscan -p 1234 --mitigations\n";
     std::wcout << L"  vmemscan -p 1234 --score\n";
     std::wcout << L"  vmemscan -p 1234 --hollowing\n";
     std::wcout << L"  vmemscan -p 1234 --ghosting\n";
@@ -137,6 +143,8 @@ int wmain(int argc, wchar_t* argv[]) {
     bool mode_stack = false;
     bool mode_sleep_mask = false;
     bool mode_anti_debug = false;
+    bool mode_wiped_pe = false;
+    bool mode_mitigations = false;
     bool mode_score = false;
     bool mode_iocs = false;
     uint64_t iocs_addr = 0;
@@ -166,7 +174,7 @@ int wmain(int argc, wchar_t* argv[]) {
             print_help();
             return 0;
         } else if (arg == L"-v" || arg == L"--version") {
-            std::wcout << L"vmemscan version 0.8.0\n";
+            std::wcout << L"vmemscan version 0.9.0\n";
             return 0;
         } else if (arg == L"-p" || arg == L"--pid") {
             if (i + 1 < argc) target_pid = static_cast<uint32_t>(_wtoi(argv[++i]));
@@ -212,6 +220,10 @@ int wmain(int argc, wchar_t* argv[]) {
             mode_sleep_mask = true;
         } else if (arg == L"--anti-debug") {
             mode_anti_debug = true;
+        } else if (arg == L"--wiped-pe") {
+            mode_wiped_pe = true;
+        } else if (arg == L"--mitigations") {
+            mode_mitigations = true;
         } else if (arg == L"--score") {
             mode_score = true;
         } else if (arg == L"--iocs") {
@@ -501,6 +513,22 @@ int wmain(int argc, wchar_t* argv[]) {
         return 0;
     }
 
+    if (mode_wiped_pe) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto wiped_rep = WipedPeDetector::audit_process_wiped_pe(hProcess, target_proc.pid, target_proc.name, regions);
+        Formatter::print_wiped_pe_report(wiped_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_mitigations) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto mit_rep = MitigationsAuditor::audit_process_mitigations(hProcess, target_proc.pid, target_proc.name);
+        Formatter::print_mitigations_report(mit_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
     if (mode_score) {
         if (!output_json && !output_csv) Formatter::print_banner();
         auto c2_rep = C2Detector::scan_process_c2(hProcess, target_proc.pid, target_proc.name, regions);
@@ -511,6 +539,8 @@ int wmain(int argc, wchar_t* argv[]) {
         auto stk_rep = StackAuditor::audit_process_stacks(hProcess, target_proc.pid, target_proc.name, regions);
         auto sleep_rep = SleepMaskDetector::audit_process_sleep_mask(hProcess, target_proc.pid, target_proc.name, regions);
         auto anti_rep = AntiDebugAuditor::audit_process_anti_debug(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
+        auto wiped_rep = WipedPeDetector::audit_process_wiped_pe(hProcess, target_proc.pid, target_proc.name, regions);
+        auto mit_rep = MitigationsAuditor::audit_process_mitigations(hProcess, target_proc.pid, target_proc.name);
         auto patch_rep = PatchDetector::audit_process_patches(hProcess, target_proc.pid, target_proc.name);
         auto iat_rep = IatHookDetector::audit_process_iat(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit, regions, hol_rep.in_memory_image_base);
         auto mod_rep = ModuleAuditor::audit_process_modules(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
@@ -531,6 +561,11 @@ int wmain(int argc, wchar_t* argv[]) {
             if (er.is_high_entropy) ++high_entropy_count;
         }
 
+        bool mitigation_breach = false;
+        if (!mit_rep.acg_prohibit_dynamic_code && (unbacked_exec_count > 0 || rwx_count > 0)) {
+            mitigation_breach = true;
+        }
+
         auto risk = RiskScorer::compute_process_risk(
             !c2_rep.detected_beacons.empty(),
             hol_rep.is_hollowed,
@@ -548,7 +583,9 @@ int wmain(int argc, wchar_t* argv[]) {
             ghost_rep.is_ghosted || ghost_rep.is_herpaderped,
             stomp_rep.stomped_modules_count,
             sleep_rep.masked_regions_count,
-            anti_rep.anti_debug_flags_detected || anti_rep.hardware_breakpoints_present
+            anti_rep.anti_debug_flags_detected || anti_rep.hardware_breakpoints_present,
+            wiped_rep.wiped_pe_count,
+            mitigation_breach
         );
 
         Formatter::print_risk_assessment(target_proc, risk);
