@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vmemscan/anti_debug_auditor.hpp"
+#include "vmemscan/bof_auditor.hpp"
 #include "vmemscan/c2_detector.hpp"
 #include "vmemscan/clr_auditor.hpp"
 #include "vmemscan/common.hpp"
@@ -33,6 +34,7 @@
 #include "vmemscan/unwind_auditor.hpp"
 #include "vmemscan/veh_auditor.hpp"
 #include "vmemscan/wiped_pe_detector.hpp"
+#include "vmemscan/working_set_auditor.hpp"
 
 #include <string>
 #include <vector>
@@ -78,6 +80,8 @@ public:
     static void print_unwind_report(const UnwindAuditReport& report);
     static void print_fiber_report(const FiberReport& report);
     static void print_clr_report(const ClrAuditReport& report);
+    static void print_working_set_report(const WorkingSetReport& report);
+    static void print_bof_report(const BofReport& report);
     static void print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk);
     static void print_pattern_matches(const std::vector<PatternMatch>& matches);
     static void print_dump_result(const DumpResult& res);

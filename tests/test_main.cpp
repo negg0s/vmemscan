@@ -1,4 +1,5 @@
 #include "vmemscan/anti_debug_auditor.hpp"
+#include "vmemscan/bof_auditor.hpp"
 #include "vmemscan/c2_detector.hpp"
 #include "vmemscan/clr_auditor.hpp"
 #include "vmemscan/common.hpp"
@@ -35,6 +36,7 @@
 #include "vmemscan/unwind_auditor.hpp"
 #include "vmemscan/veh_auditor.hpp"
 #include "vmemscan/wiped_pe_detector.hpp"
+#include "vmemscan/working_set_auditor.hpp"
 
 #include <cassert>
 #include <iostream>
@@ -1209,6 +1211,47 @@ void test_v130_risk_scorer_evaluation() {
     check(risk.risk_factors.size() == 2, "two risk factors recorded for fiber and clr");
 }
 
+void test_working_set_auditor_self() {
+    auto rep = WorkingSetAuditor::audit_process_working_set(
+        GetCurrentProcess(), GetCurrentProcessId(), L"vmemscan_tests.exe"
+    );
+    check(rep.process_id == GetCurrentProcessId(), "working set report pid matches current process");
+    check(rep.image_pages_checked > 0, "image code pages were inspected");
+    check(rep.valid_pages_in_ws > 0, "resident image pages verified in working set");
+    check(rep.valid_pages_in_ws <= rep.image_pages_checked, "valid pages within bounds of checked pages");
+}
+
+void test_working_set_anomaly_strings() {
+    check(!WorkingSetAuditor::anomaly_type_to_string(WorkingSetAnomalyType::CopiedImagePage).empty(), "copied image page string");
+    check(!WorkingSetAuditor::anomaly_type_to_string(WorkingSetAnomalyType::RwxImagePage).empty(), "rwx image page string");
+}
+
+void test_bof_auditor_self() {
+    auto rep = BofAuditor::audit_process_bofs(
+        GetCurrentProcess(), GetCurrentProcessId(), L"vmemscan_tests.exe"
+    );
+    check(rep.process_id == GetCurrentProcessId(), "bof report pid matches current process");
+    check(rep.anomalies.empty(), "clean test process has zero BOF payload artifacts");
+}
+
+void test_bof_anomaly_strings() {
+    check(!BofAuditor::anomaly_type_to_string(BofAnomalyType::BeaconApiArtifact).empty(), "beacon api artifact string");
+    check(!BofAuditor::anomaly_type_to_string(BofAnomalyType::DynamicFunctionResolution).empty(), "dfr artifact string");
+    check(!BofAuditor::anomaly_type_to_string(BofAnomalyType::CoffRelocationArtifact).empty(), "coff relocation string");
+}
+
+void test_v140_risk_scorer_evaluation() {
+    auto risk = RiskScorer::compute_process_risk(
+        false, false, 0, 0, 0, 0, 0, 0, 0, 0, false,
+        0, 0, false, 0, 0, false, 0, false, 0, 0, 0, 0, 0, 0, 0,
+        1, // working set anomaly (+40)
+        1  // bof anomaly (+50)
+    );
+    check(risk.total_score == 90, "working set + bof anomalies produce score 90");
+    check(risk.verdict == ThreatVerdict::CriticalCompromised, "verdict is CriticalCompromised");
+    check(risk.risk_factors.size() == 2, "two risk factors recorded for working set and bof");
+}
+
 int main() {
     std::wcout << L"[RUN] test_privileges_check\n";
     test_privileges_check();
@@ -1369,6 +1412,21 @@ int main() {
     std::wcout << L"[RUN] test_v130_risk_scorer_evaluation\n";
     test_v130_risk_scorer_evaluation();
 
-    std::wcout << L"All 53 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_working_set_auditor_self\n";
+    test_working_set_auditor_self();
+
+    std::wcout << L"[RUN] test_working_set_anomaly_strings\n";
+    test_working_set_anomaly_strings();
+
+    std::wcout << L"[RUN] test_bof_auditor_self\n";
+    test_bof_auditor_self();
+
+    std::wcout << L"[RUN] test_bof_anomaly_strings\n";
+    test_bof_anomaly_strings();
+
+    std::wcout << L"[RUN] test_v140_risk_scorer_evaluation\n";
+    test_v140_risk_scorer_evaluation();
+
+    std::wcout << L"All 58 unit test suites passed successfully.\n";
     return 0;
 }

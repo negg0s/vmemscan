@@ -17,6 +17,7 @@ std::wstring PatchDetector::patch_type_to_string(PatchType pt) {
     case PatchType::Breakpoint:         return L"INT 3 (Breakpoint 0xCC)";
     case PatchType::NopSled:            return L"NOP Sled (0x90)";
     case PatchType::ModifiedPrologue:   return L"Modified Function Entry";
+    case PatchType::DebuggerSuppression:return L"Debugger Suppression (Anti-Analysis Patch)";
     default:                            return L"Unknown";
     }
 }
@@ -214,7 +215,10 @@ PatchReport PatchDetector::audit_process_patches(
         { L"amsi.dll", "AmsiOpenSession" },
         // Windows Defender / Endpoint telemetry
         { L"ntdll.dll", "EtwEventRegister" },
-        { L"ntdll.dll", "EtwEventEnabled" }
+        { L"ntdll.dll", "EtwEventEnabled" },
+        // Debugger Attachment and Breakin suppression
+        { L"ntdll.dll", "DbgBreakPoint" },
+        { L"ntdll.dll", "DbgUiRemoteBreakin" }
     };
 
     for (const auto& t : targets) {
@@ -232,7 +236,23 @@ PatchReport PatchDetector::audit_process_patches(
         }
 
         std::wstring desc;
-        PatchType pt = classify_prologue(buffer, read, desc);
+        PatchType pt = PatchType::None;
+
+        if (t.function_name == "DbgBreakPoint") {
+            // Normal DbgBreakPoint begins with INT 3 (0xCC)
+            if (buffer[0] != 0xCC) {
+                pt = PatchType::DebuggerSuppression;
+                desc = L"DbgBreakPoint patched to suppress debugger attachment";
+            }
+        } else if (t.function_name == "DbgUiRemoteBreakin") {
+            pt = classify_prologue(buffer, read, desc);
+            if (pt != PatchType::None) {
+                desc = L"DbgUiRemoteBreakin patched to abort debugger connection";
+            }
+        } else {
+            pt = classify_prologue(buffer, read, desc);
+        }
+
         if (pt != PatchType::None) {
             SecurityPatchAnomaly anomaly{};
             anomaly.module_name = t.module_name;
@@ -244,7 +264,8 @@ PatchReport PatchDetector::audit_process_patches(
             anomaly.is_critical = (pt == PatchType::EarlyReturn ||
                                    pt == PatchType::ZeroReturn ||
                                    pt == PatchType::InvalidArgReturn ||
-                                   pt == PatchType::UnconditionalJump);
+                                   pt == PatchType::UnconditionalJump ||
+                                   pt == PatchType::DebuggerSuppression);
             rep.anomalies.push_back(std::move(anomaly));
         }
     }

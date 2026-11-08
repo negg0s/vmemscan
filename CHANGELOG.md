@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2026-11-08
+
+### Added
+- Working set and Copy-On-Write page table forensics (--working-set, --ws): queries target process working set entries via K32QueryWorkingSetEx on all committed MEM_IMAGE executable code pages. Exposes code pages whose physical page table attributes transitioned from shared (PS_SHARED) to private copy-on-write (PS_PRIVATE), uncovering in-memory inline hooks, patches, and code section stomping without requiring on-disk file comparisons.
+- In-memory Beacon Object File (BOF) and DFR forensics (--bof): scans unbacked memory regions for residual symbol tables and function call markers generated during BOF execution (Cobalt Strike, Havoc, Sliver). Recognizes internal Beacon API functions (BeaconPrintf, BeaconDataParse, BeaconOutput) and Dynamic Function Resolution (LIBRARY$Function) symbol patterns.
+- Debugger suppression and anti-analysis patch detection: added auditing for ntdll!DbgBreakPoint and ntdll!DbgUiRemoteBreakin to catch anti-debugging patches that suppress debugger attachments and forensic memory inspection.
+- Integrated working set image modifications (+40) and BOF payload artifacts (+50) into the unified forensic threat scoring model.
+- Expanded automated unit test suite from 53 to 58 test suites.
+
 ## [1.3.0] - 2026-11-08
 
 ### Added

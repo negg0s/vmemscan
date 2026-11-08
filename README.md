@@ -37,7 +37,10 @@ Written in modern C++20 and pure Win32 / NT Native API. Zero external dependenci
 - **Call Stack Unwind Forensics (.pdata Validation)**: Inspects return addresses against module `.pdata` `RUNTIME_FUNCTION` entries to expose synthetic stack frames and Call Stack Spoofing.
 - **Fiber Execution Context & FLS Forensics**: Traverses thread execution contexts for active Fibers (`TEB.FiberData`), inspecting fiber start routines, fiber stack boundaries, and Fiber Local Storage (FLS) callbacks for unbacked memory redirection.
 - **In-Memory CLR & .NET Assembly Injection Forensics**: Detects native Win32 processes hosting the .NET CLR runtime (execute-assembly / Donut injection) and scans private memory pages for in-memory loaded .NET assembly metadata headers (`BSJB` magic `0x424A5342`).
-- **Unified Forensic Risk Scoring Engine**: Evaluates active indicators across injection, hollowing, direct syscalls, indirect syscalls, thread contexts, stack return addresses, fibers, CLR, and telemetry patches to assign a normalized 0-100 risk score and operational threat verdict.
+- **Working Set Copy-On-Write Page Table Forensics**: Queries process working set attributes via `K32QueryWorkingSetEx` on all committed `MEM_IMAGE` executable pages, detecting in-memory modifications, hooks, and patches where pages have transitioned from shared to private copy-on-write (`Shared == 0`).
+- **In-Memory Beacon Object File (BOF) & DFR Forensics**: Scans unbacked memory regions for in-memory Beacon API symbols (`BeaconPrintf`, `BeaconDataParse`, `BeaconOutput`) and Dynamic Function Resolution (`LIBRARY$Function`) symbol artifacts left by Cobalt Strike, Havoc, and Sliver BOF executions.
+- **Debugger Attachment Suppression Audit**: Audits `ntdll.dll!DbgBreakPoint` and `ntdll.dll!DbgUiRemoteBreakin` to expose anti-analysis patches that disable external debuggers and memory inspection attachments.
+- **Unified Forensic Risk Scoring Engine**: Evaluates active indicators across injection, hollowing, direct syscalls, indirect syscalls, thread contexts, stack return addresses, fibers, CLR, working set COW modifications, BOF payloads, and telemetry patches to assign a normalized 0-100 risk score and operational threat verdict.
 - **Virtual Memory Snapshot Baseline & Diffing**: Captures memory state baselines to JSON and detects late code injections, W^X protection escalations, and modified executable pages.
 - **Memory Region Dumper & PE Fixup**: Dumps target memory regions to disk, automatically reconstructing PE section alignment and raw pointers for analysis in static disassemblers.
 - **Memory Pattern & String Search**: Scans process virtual memory for wildcard byte patterns (e.g. `48 8B ?? ?? ?? E8`) and ASCII strings.
@@ -106,6 +109,8 @@ Analysis Modes:
   --unwind                 Audit thread call stack return addresses for .pdata metadata and spoofing
   --fibers                 Audit fiber execution contexts and unbacked Fiber Local Storage (FLS) callbacks
   --clr                    Audit in-memory CLR runtime hosting and unbacked .NET assemblies (BSJB)
+  --working-set, --ws      Audit working set Copy-On-Write code pages in mapped images for in-memory tampering
+  --bof                    Audit unbacked memory for in-memory Beacon Object File (BOF) and DFR symbol artifacts
   --score                  Compute unified forensic threat score (0-100) and risk assessment
   --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address
   --summary                Display virtual memory allocation statistics and breakdown
@@ -226,6 +231,12 @@ vmemscan -p 1234 --fibers
 
 # Audit process for unmanaged .NET CLR injection and in-memory BSJB assemblies
 vmemscan -p 1234 --clr
+
+# Audit process working set for Copy-On-Write code pages in mapped images
+vmemscan -p 1234 --working-set
+
+# Audit unbacked memory for Beacon Object File (BOF) and DFR symbol artifacts
+vmemscan -p 1234 --bof
 
 # Compute unified forensic threat score and operational verdict
 vmemscan -p 1234 --score

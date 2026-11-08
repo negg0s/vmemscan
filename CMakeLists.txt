@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(vmemscan
-    VERSION 1.3.0
+    VERSION 1.4.0
     LANGUAGES CXX
 )
 
@@ -48,6 +48,7 @@ endif()
 # Core static library
 add_library(vmemscan_core STATIC
     include/vmemscan/anti_debug_auditor.hpp
+    include/vmemscan/bof_auditor.hpp
     include/vmemscan/c2_detector.hpp
     include/vmemscan/clr_auditor.hpp
     include/vmemscan/common.hpp
@@ -85,8 +86,10 @@ add_library(vmemscan_core STATIC
     include/vmemscan/unwind_auditor.hpp
     include/vmemscan/veh_auditor.hpp
     include/vmemscan/wiped_pe_detector.hpp
+    include/vmemscan/working_set_auditor.hpp
 
     src/anti_debug_auditor.cpp
+    src/bof_auditor.cpp
     src/c2_detector.cpp
     src/clr_auditor.cpp
     src/entropy_calculator.cpp
@@ -122,6 +125,7 @@ add_library(vmemscan_core STATIC
     src/unwind_auditor.cpp
     src/veh_auditor.cpp
     src/wiped_pe_detector.cpp
+    src/working_set_auditor.cpp
 )
 
 target_include_directories(vmemscan_core PUBLIC include)

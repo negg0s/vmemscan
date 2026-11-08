@@ -1014,6 +1014,67 @@ void Formatter::print_clr_report(const ClrAuditReport& report) {
     std::wcout << L"====================================================================================================\n\n";
 }
 
+void Formatter::print_working_set_report(const WorkingSetReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" WORKING SET & COPY-ON-WRITE (COW) PAGE TABLE FORENSICS: " << report.process_name << L" (PID " << report.process_id << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Image Code Pages Checked  : " << report.image_pages_checked << L"\n";
+    std::wcout << L"  Resident In Working Set   : " << report.valid_pages_in_ws << L"\n";
+    std::wcout << L"  Modified (Private COW)    : " << report.modified_cow_pages << L"\n";
+    std::wcout << L"  Anomalous Image Pages     : " << report.anomalies.size() << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty()) {
+        std::wcout << L"  Zero modified image pages detected. All resident code pages maintain shared state with on-disk binaries.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [IMAGE TAMPERING DETECTED] Address: " << to_hex_string(a.virtual_address) << L"\n";
+            std::wcout << L"    Anomaly Type      : " << WorkingSetAuditor::anomaly_type_to_string(a.anomaly_type) << L"\n";
+            if (!a.module_name.empty()) {
+                std::wcout << L"    Module            : " << a.module_name << L"\n";
+                std::wcout << L"    Module Base       : " << to_hex_string(a.module_base) << L"\n";
+                std::wcout << L"    Module RVA        : +0x" << std::hex << a.rva << std::dec << L"\n";
+            }
+            std::wcout << L"    Details           : " << a.details << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_bof_report(const BofReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" IN-MEMORY BEACON OBJECT FILE (BOF) & DFR ARTIFACT FORENSICS: " << report.process_name << L" (PID " << report.process_id << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Unbacked Regions Scanned  : " << report.unbacked_regions_scanned << L"\n";
+    std::wcout << L"  BOF Payloads Identified   : " << report.bof_artifacts_found << L"\n";
+    std::wcout << L"  Anomalies Detected        : " << report.anomalies.size() << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty()) {
+        std::wcout << L"  Zero BOF artifacts detected. No Beacon API functions or Dynamic Function Resolution symbols present.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [BOF INJECTION DETECTED] Base Address: " << to_hex_string(a.virtual_address) << L"\n";
+            std::wcout << L"    Anomaly Type      : " << BofAuditor::anomaly_type_to_string(a.anomaly_type) << L"\n";
+            std::wcout << L"    Region Size       : 0x" << std::hex << a.region_size << std::dec << L" (" << format_bytes(a.region_size) << L")\n";
+            std::wcout << L"    Matched Symbols   : ";
+            for (size_t i = 0; i < a.matched_symbols.size(); ++i) {
+                if (i > 0) std::wcout << L", ";
+                std::wcout << std::wstring(a.matched_symbols[i].begin(), a.matched_symbols[i].end());
+                if (i >= 8) {
+                    std::wcout << L"... (+" << (a.matched_symbols.size() - i - 1) << L" more)";
+                    break;
+                }
+            }
+            std::wcout << L"\n";
+            std::wcout << L"    Details           : " << a.details << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 void Formatter::print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk) {
     std::wcout << L"\n";
     std::wcout << L"====================================================================================================\n";

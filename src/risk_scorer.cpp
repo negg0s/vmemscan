@@ -40,7 +40,9 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     size_t section_anomalies_count,
     size_t unwind_anomalies_count,
     size_t fiber_anomalies_count,
-    size_t clr_anomalies_count
+    size_t clr_anomalies_count,
+    size_t working_set_anomalies_count,
+    size_t bof_anomalies_count
 ) {
     RiskScoreBreakdown r{};
     uint32_t score = 0;
@@ -168,6 +170,16 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     if (clr_anomalies_count > 0) {
         score += 45;
         r.risk_factors.push_back(L"In-memory .NET assembly (BSJB) or unmanaged CLR injection detected (+45)");
+    }
+
+    if (bof_anomalies_count > 0) {
+        score += 50;
+        r.risk_factors.push_back(L"In-memory Beacon Object File (BOF) / Beacon API artifacts identified (+50)");
+    }
+
+    if (working_set_anomalies_count > 0) {
+        score += 40;
+        r.risk_factors.push_back(L"Working set Copy-On-Write code page modifications in system image (+40)");
     }
 
     if (high_entropy_regions_count > 0) {

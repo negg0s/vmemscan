@@ -23,7 +23,8 @@ enum class PatchType {
     UnconditionalJump,     // JMP rel32 or JMP indirect
     Breakpoint,            // INT 3 (0xCC)
     NopSled,               // Repeated NOPs (0x90)
-    ModifiedPrologue       // Generic byte mismatch with standard stub
+    ModifiedPrologue,      // Generic byte mismatch with standard stub
+    DebuggerSuppression    // DbgBreakPoint / DbgUiRemoteBreakin patched to suppress attachment
 };
 
 struct SecurityPatchAnomaly {

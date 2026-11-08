@@ -57,7 +57,9 @@ public:
         size_t section_anomalies_count = 0,
         size_t unwind_anomalies_count = 0,
         size_t fiber_anomalies_count = 0,
-        size_t clr_anomalies_count = 0
+        size_t clr_anomalies_count = 0,
+        size_t working_set_anomalies_count = 0,
+        size_t bof_anomalies_count = 0
     );
 
     static std::wstring verdict_to_string(ThreatVerdict v);
