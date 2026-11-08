@@ -1,12 +1,15 @@
 #include "vmemscan/common.hpp"
 #include "vmemscan/formatter.hpp"
 #include "vmemscan/hook_detector.hpp"
+#include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/memory_scanner.hpp"
+#include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
 #include "vmemscan/privileges.hpp"
 #include "vmemscan/process_snapshot.hpp"
+#include "vmemscan/snapshot_differ.hpp"
 
 #include <cassert>
 #include <iostream>
@@ -196,6 +199,90 @@ void test_self_memory_scan() {
     check(inj_rep.pid == pInfo.pid, "injection report generated for self");
 }
 
+void test_patch_detection_patterns() {
+    std::wstring desc;
+
+    // 1. Direct RET
+    uint8_t ret_bytes[] = { 0xC3, 0x90, 0x90 };
+    check(PatchDetector::classify_prologue(ret_bytes, sizeof(ret_bytes), desc) == PatchType::EarlyReturn, "detects early RET");
+
+    // 2. Breakpoint INT 3
+    uint8_t bp_bytes[] = { 0xCC, 0x90, 0x90 };
+    check(PatchDetector::classify_prologue(bp_bytes, sizeof(bp_bytes), desc) == PatchType::Breakpoint, "detects breakpoint INT 3");
+
+    // 3. XOR EAX, EAX; RET
+    uint8_t zero_bytes[] = { 0x31, 0xC0, 0xC3 };
+    check(PatchDetector::classify_prologue(zero_bytes, sizeof(zero_bytes), desc) == PatchType::ZeroReturn, "detects XOR EAX, EAX; RET");
+
+    // 4. AMSI invalid arg bypass (B8 57 00 07 80 C3)
+    uint8_t amsi_bytes[] = { 0xB8, 0x57, 0x00, 0x07, 0x80, 0xC3 };
+    check(PatchDetector::classify_prologue(amsi_bytes, sizeof(amsi_bytes), desc) == PatchType::InvalidArgReturn, "detects AMSI E_INVALIDARG bypass");
+
+    // 5. Unconditional JMP
+    uint8_t jmp_bytes[] = { 0xE9, 0x10, 0x20, 0x30, 0x40 };
+    check(PatchDetector::classify_prologue(jmp_bytes, sizeof(jmp_bytes), desc) == PatchType::UnconditionalJump, "detects JMP");
+
+    // 6. Clean syscall stub
+    uint8_t clean_stub[] = { 0x4C, 0x8B, 0xD1, 0xB8, 0x18, 0x00, 0x00, 0x00 };
+    check(PatchDetector::classify_prologue(clean_stub, sizeof(clean_stub), desc) == PatchType::None, "clean stub classified as None");
+}
+
+void test_hollowing_anomaly_classification() {
+    std::wstring s1 = HollowingDetector::anomaly_type_to_string(HollowingAnomalyType::UnmappedImageBase);
+    check(!s1.empty(), "Hollowing anomaly string not empty");
+
+    std::wstring s2 = HollowingDetector::anomaly_type_to_string(HollowingAnomalyType::EntryPointMismatch);
+    check(!s2.empty(), "EntryPointMismatch string not empty");
+
+    std::wstring s3 = HollowingDetector::anomaly_type_to_string(HollowingAnomalyType::EntryPointHooked);
+    check(!s3.empty(), "EntryPointHooked string not empty");
+}
+
+void test_snapshot_diffing() {
+    ProcessMemorySnapshot baseline{};
+    baseline.pid = 1234;
+    baseline.process_name = L"test.exe";
+    baseline.timestamp = 1000;
+
+    SnapshotRegion r1{};
+    r1.base_address = 0x10000;
+    r1.region_size = 4096;
+    r1.protect = PAGE_READONLY;
+    r1.is_executable = false;
+    r1.content_hash = 1111;
+    baseline.regions.push_back(r1);
+
+    SnapshotRegion r2{};
+    r2.base_address = 0x20000;
+    r2.region_size = 8192;
+    r2.protect = PAGE_EXECUTE_READ;
+    r2.is_executable = true;
+    r2.content_hash = 2222;
+    baseline.regions.push_back(r2);
+
+    ProcessMemorySnapshot current = baseline;
+    // 1. Escalate r1 protection
+    current.regions[0].protect = PAGE_EXECUTE_READWRITE;
+    current.regions[0].is_executable = true;
+
+    // 2. Modify r2 content hash
+    current.regions[1].content_hash = 3333;
+
+    // 3. Add new executable region
+    SnapshotRegion r3{};
+    r3.base_address = 0x30000;
+    r3.region_size = 4096;
+    r3.protect = PAGE_EXECUTE_READWRITE;
+    r3.is_executable = true;
+    r3.content_hash = 4444;
+    current.regions.push_back(r3);
+
+    auto diff = SnapshotDiffer::compare_snapshots(baseline, current);
+    check(diff.protection_escalations.size() == 1, "detected 1 protection escalation");
+    check(diff.modified_code_regions.size() == 1, "detected 1 modified code region");
+    check(diff.new_executable_regions.size() == 1, "detected 1 new executable region");
+}
+
 int main() {
     std::wcout << L"[RUN] test_privileges_check\n";
     test_privileges_check();
@@ -233,6 +320,15 @@ int main() {
     std::wcout << L"[RUN] test_self_memory_scan\n";
     test_self_memory_scan();
 
-    std::wcout << L"All 12 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_patch_detection_patterns\n";
+    test_patch_detection_patterns();
+
+    std::wcout << L"[RUN] test_hollowing_anomaly_classification\n";
+    test_hollowing_anomaly_classification();
+
+    std::wcout << L"[RUN] test_snapshot_diffing\n";
+    test_snapshot_diffing();
+
+    std::wcout << L"All 15 unit test suites passed successfully.\n";
     return 0;
 }

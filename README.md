@@ -14,6 +14,9 @@ Written in modern C++20 and pure Win32 / NT Native API. Zero external dependenci
 - **Shellcode Prologue Pattern Detection**: Cross-examines memory execution blocks against common shellcode prologue sequences (stack alignment, call-pop deltas, register clearings).
 - **Thread Start Address Forensics**: Queries thread entry points via `NtQueryInformationThread(ThreadQuerySetWin32StartAddress)` and detects threads running from unbacked memory (remote thread injection targets).
 - **Inline API Hook Detection**: Compares in-memory instruction bytes of critical system APIs in `ntdll.dll` against clean disk bytes, detecting relative jumps, indirect jumps, and user-mode rootkit hooks.
+- **Security Telemetry Patch Detection**: Audits in-memory tampering of Event Tracing for Windows (ETW: `EtwEventWrite`, `EtwEventWriteFull`, `NtTraceEvent`) and Antimalware Scan Interface (AMSI: `AmsiScanBuffer`, `AmsiScanString`, `AmsiOpenSession`) security functions.
+- **Process Hollowing & Header Stomping Forensics**: Queries the remote PEB to extract `ImageBaseAddress`, compares in-memory entry points and image size against on-disk PE headers, and inspects entry points for redirection stubs.
+- **Virtual Memory Snapshot Baseline & Diffing**: Captures memory state baselines to JSON and detects late code injections, W^X protection escalations, and modified executable pages.
 - **Memory Region Dumper & PE Fixup**: Dumps target memory regions to disk, automatically reconstructing PE section alignment and raw pointers for analysis in static disassemblers.
 - **Memory Pattern & String Search**: Scans process virtual memory for wildcard byte patterns (e.g. `48 8B ?? ?? ?? E8`) and ASCII strings.
 - **Process Memory Summary**: Calculates total virtual commit, private heap allocations, mapped memory, executable memory, and unbacked executable ratios.
@@ -56,7 +59,13 @@ Analysis Modes:
   -i, --injection          Audit target process for unbacked executable memory and injection
   -m, --map                Display virtual memory map of target process
   --hooks                  Audit inline API hooks in loaded system libraries
+  --patches                Audit telemetry bypasses (ETW and AMSI in-memory patches)
+  --hollowing              Audit process hollowing and PE entry point integrity
   --summary                Display virtual memory allocation statistics and breakdown
+
+Memory Snapshot & Diffing:
+  --save-snapshot <file>   Save process virtual memory snapshot baseline to JSON
+  --diff-snapshot <file>   Compare current process memory against saved baseline
 
 Memory Dumping & Carving:
   --dump <hex_addr>        Dump memory region starting at hexadecimal address
@@ -95,6 +104,18 @@ vmemscan -p 1234 -m --only-unbacked
 
 # Inspect process for user-mode inline API hooks in system libraries
 vmemscan -p 1234 --hooks
+
+# Audit telemetry stubs (ETW / AMSI) for in-memory silencing patches
+vmemscan -p 1234 --patches
+
+# Verify PE headers and entry point against on-disk image to detect hollowing
+vmemscan -p 1234 --hollowing
+
+# Save process memory baseline snapshot to file
+vmemscan -p 1234 --save-snapshot baseline.json
+
+# Diff current process memory against saved baseline snapshot
+vmemscan -p 1234 --diff-snapshot baseline.json
 
 # Dump a suspicious memory region to disk and reconstruct PE headers
 vmemscan -p 1234 --dump 0x7FFA120000 --out payload.bin --fixup-pe

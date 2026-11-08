@@ -1,12 +1,15 @@
 #include "vmemscan/common.hpp"
 #include "vmemscan/formatter.hpp"
 #include "vmemscan/hook_detector.hpp"
+#include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/memory_scanner.hpp"
+#include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
 #include "vmemscan/privileges.hpp"
 #include "vmemscan/process_snapshot.hpp"
+#include "vmemscan/snapshot_differ.hpp"
 
 #include <iostream>
 #include <string>
@@ -35,7 +38,12 @@ static void print_help() {
     std::wcout << L"  -i, --injection          Audit target process for unbacked executable memory and injection\n";
     std::wcout << L"  -m, --map                Display virtual memory map of target process\n";
     std::wcout << L"  --hooks                  Audit inline API hooks in loaded system libraries\n";
+    std::wcout << L"  --patches                Audit telemetry bypasses (ETW and AMSI in-memory patches)\n";
+    std::wcout << L"  --hollowing              Audit process hollowing and PE entry point integrity\n";
     std::wcout << L"  --summary                Display virtual memory allocation statistics and breakdown\n\n";
+    std::wcout << L"Memory Snapshot & Diffing:\n";
+    std::wcout << L"  --save-snapshot <file>   Save process virtual memory snapshot baseline to JSON\n";
+    std::wcout << L"  --diff-snapshot <file>   Compare current process memory against saved baseline\n\n";
     std::wcout << L"Memory Dumping & Carving:\n";
     std::wcout << L"  --dump <hex_addr>        Dump memory region starting at hexadecimal address\n";
     std::wcout << L"  --size <bytes>           Size in bytes to dump (default: region size)\n";
@@ -54,8 +62,11 @@ static void print_help() {
     std::wcout << L"  -v, --version            Display version information\n\n";
     std::wcout << L"Examples:\n";
     std::wcout << L"  vmemscan -p 1234 -i\n";
+    std::wcout << L"  vmemscan -p 1234 --patches\n";
+    std::wcout << L"  vmemscan -p 1234 --hollowing\n";
+    std::wcout << L"  vmemscan -p 1234 --save-snapshot baseline.json\n";
+    std::wcout << L"  vmemscan -p 1234 --diff-snapshot baseline.json\n";
     std::wcout << L"  vmemscan -p 1234 -m --only-unbacked\n";
-    std::wcout << L"  vmemscan -p 1234 --hooks\n";
     std::wcout << L"  vmemscan -p 1234 --dump 0x7FFA120000 --out payload.bin --fixup-pe\n";
     std::wcout << L"  vmemscan --all -i\n";
 }
@@ -72,7 +83,12 @@ int wmain(int argc, wchar_t* argv[]) {
     bool mode_map = false;
     bool mode_injection = false;
     bool mode_hooks = false;
+    bool mode_patches = false;
+    bool mode_hollowing = false;
     bool mode_summary = false;
+
+    std::wstring save_snapshot_path;
+    std::wstring diff_snapshot_path;
 
     bool mode_dump = false;
     uint64_t dump_addr = 0;
@@ -95,7 +111,7 @@ int wmain(int argc, wchar_t* argv[]) {
             print_help();
             return 0;
         } else if (arg == L"-v" || arg == L"--version") {
-            std::wcout << L"vmemscan version 0.1.0\n";
+            std::wcout << L"vmemscan version 0.2.0\n";
             return 0;
         } else if (arg == L"-p" || arg == L"--pid") {
             if (i + 1 < argc) target_pid = static_cast<uint32_t>(_wtoi(argv[++i]));
@@ -111,6 +127,14 @@ int wmain(int argc, wchar_t* argv[]) {
             mode_injection = true;
         } else if (arg == L"--hooks") {
             mode_hooks = true;
+        } else if (arg == L"--patches") {
+            mode_patches = true;
+        } else if (arg == L"--hollowing") {
+            mode_hollowing = true;
+        } else if (arg == L"--save-snapshot") {
+            if (i + 1 < argc) save_snapshot_path = argv[++i];
+        } else if (arg == L"--diff-snapshot") {
+            if (i + 1 < argc) diff_snapshot_path = argv[++i];
         } else if (arg == L"--summary") {
             mode_summary = true;
         } else if (arg == L"--dump") {
@@ -267,6 +291,52 @@ int wmain(int argc, wchar_t* argv[]) {
         if (!output_json && !output_csv) Formatter::print_banner();
         auto hook_rep = HookDetector::audit_process_hooks(hProcess, target_proc.pid, target_proc.name);
         Formatter::print_hook_report(hook_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_patches) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto patch_rep = PatchDetector::audit_process_patches(hProcess, target_proc.pid, target_proc.name);
+        Formatter::print_patch_report(patch_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_hollowing) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto hollow_rep = HollowingDetector::analyze_process(hProcess, target_proc.pid, target_proc.name, target_proc.path, target_proc.is_64bit);
+        Formatter::print_hollowing_report(hollow_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (!save_snapshot_path.empty()) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto snap = SnapshotDiffer::capture_snapshot(hProcess, target_proc.pid, target_proc.name, regions);
+        auto save_res = SnapshotDiffer::save_snapshot_json(snap, save_snapshot_path);
+        if (!save_res) {
+            std::wcerr << L"Failed to save snapshot: " << save_res.error().to_string() << L"\n";
+            CloseHandle(hProcess);
+            return 1;
+        }
+        std::wcout << L"Memory snapshot successfully saved to: " << save_snapshot_path << L"\n";
+        std::wcout << L"Captured " << snap.regions.size() << L" committed regions.\n";
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (!diff_snapshot_path.empty()) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto base_res = SnapshotDiffer::load_snapshot_json(diff_snapshot_path);
+        if (!base_res) {
+            std::wcerr << L"Failed to load baseline snapshot: " << base_res.error().to_string() << L"\n";
+            CloseHandle(hProcess);
+            return 1;
+        }
+        auto curr_snap = SnapshotDiffer::capture_snapshot(hProcess, target_proc.pid, target_proc.name, regions);
+        auto diff_rep = SnapshotDiffer::compare_snapshots(base_res.value(), curr_snap);
+        Formatter::print_diff_report(diff_rep);
         CloseHandle(hProcess);
         return 0;
     }

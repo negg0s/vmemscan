@@ -233,6 +233,109 @@ void Formatter::print_dump_result(const DumpResult& res) {
     std::wcout << L"============================================================\n\n";
 }
 
+void Formatter::print_patch_report(const PatchReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" SECURITY TELEMETRY & API PATCH AUDIT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Inspected Telemetry Stubs : " << report.inspected_targets_count << L"\n";
+    std::wcout << L"  Detected Patches / Bypasses: " << report.anomalies.size() << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty()) {
+        std::wcout << L"  Zero security patches detected. All inspected ETW and AMSI entry points are untampered.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [" << (a.is_critical ? L"CRITICAL" : L"WARNING") << L"] "
+                       << a.module_name << L"!" << std::wstring(a.function_name.begin(), a.function_name.end())
+                       << L" at " << to_hex_string(a.virtual_address) << L"\n";
+            std::wcout << L"    Classification: " << PatchDetector::patch_type_to_string(a.patch_type) << L"\n";
+            std::wcout << L"    Details       : " << a.patch_description << L"\n";
+            std::wcout << L"    Prologue Hex  : " << bytes_to_hex_preview(a.prologue_bytes) << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_hollowing_report(const HollowingReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" PROCESS HOLLOWING & MODULE OVERWRITE AUDIT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  PEB Address               : " << to_hex_string(report.peb_address) << L"\n";
+    std::wcout << L"  In-Memory ImageBase       : " << to_hex_string(report.in_memory_image_base) << L"\n";
+    std::wcout << L"  In-Memory EntryPoint      : " << to_hex_string(report.in_memory_entry_point) << L"\n";
+    if (report.on_disk_entry_point != 0) {
+        std::wcout << L"  On-Disk EntryPoint RVA    : " << to_hex_string(report.on_disk_entry_point, 8) << L"\n";
+    }
+    std::wcout << L"  Hollowing Status          : " << (report.is_hollowed ? L"[DETECTED] Process appears hollowed" : L"Clean (Consistent with disk)") << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty()) {
+        std::wcout << L"  Zero hollowing anomalies detected. PE headers and entry point match the on-disk binary.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [" << (a.is_critical ? L"CRITICAL" : L"WARNING") << L"] "
+                       << HollowingDetector::anomaly_type_to_string(a.type) << L"\n";
+            std::wcout << L"    Details       : " << a.description << L"\n";
+            if (a.expected_value != 0 || a.actual_value != 0) {
+                std::wcout << L"    Expected      : " << to_hex_string(a.expected_value)
+                           << L" | Actual: " << to_hex_string(a.actual_value) << L"\n";
+            }
+            if (!a.preview_bytes.empty()) {
+                std::wcout << L"    Bytes Preview : " << bytes_to_hex_preview(a.preview_bytes) << L"\n";
+            }
+            std::wcout << L"\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_diff_report(const SnapshotDiffReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" PROCESS MEMORY SNAPSHOT DIFF REPORT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  New Executable Regions    : " << report.new_executable_regions.size() << L"\n";
+    std::wcout << L"  Protection Escalations    : " << report.protection_escalations.size() << L"\n";
+    std::wcout << L"  Modified Code Regions     : " << report.modified_code_regions.size() << L"\n";
+    std::wcout << L"  Deallocated Regions       : " << report.deallocated_regions.size() << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (!report.new_executable_regions.empty()) {
+        std::wcout << L"\n  -- NEW EXECUTABLE REGIONS (Possible Late Injections / Shellcode) --\n";
+        for (const auto& r : report.new_executable_regions) {
+            std::wcout << L"    Base: " << to_hex_string(r.base_address)
+                       << L" (" << format_bytes(r.region_size) << L") Protect: "
+                       << MemoryScanner::protect_to_string(r.protect) << L"\n";
+        }
+    }
+
+    if (!report.protection_escalations.empty()) {
+        std::wcout << L"\n  -- PROTECTION ESCALATIONS (W^X Violations / Page Modification) --\n";
+        for (const auto& pe : report.protection_escalations) {
+            std::wcout << L"    Base: " << to_hex_string(pe.base_address)
+                       << L" (" << format_bytes(pe.region_size) << L") Old: "
+                       << MemoryScanner::protect_to_string(pe.old_protect)
+                       << L" -> New: " << MemoryScanner::protect_to_string(pe.new_protect) << L"\n";
+        }
+    }
+
+    if (!report.modified_code_regions.empty()) {
+        std::wcout << L"\n  -- MODIFIED CODE REGIONS (Inline Code Patches / Hooks) --\n";
+        for (const auto& mc : report.modified_code_regions) {
+            std::wcout << L"    Base: " << to_hex_string(mc.base_address)
+                       << L" (" << format_bytes(mc.region_size) << L") Hash Changed: "
+                       << to_hex_string(mc.old_hash, 16) << L" -> " << to_hex_string(mc.new_hash, 16) << L"\n";
+        }
+    }
+
+    if (report.new_executable_regions.empty() && report.protection_escalations.empty() && report.modified_code_regions.empty()) {
+        std::wcout << L"  Zero unexpected memory anomalies detected compared to baseline snapshot.\n";
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 std::string Formatter::to_json(
     const ProcessInfo& proc,
     const ProcessMemorySummary& summary,

@@ -2,9 +2,12 @@
 
 #include "vmemscan/common.hpp"
 #include "vmemscan/hook_detector.hpp"
+#include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/memory_dumper.hpp"
+#include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
+#include "vmemscan/snapshot_differ.hpp"
 
 #include <string>
 #include <vector>
@@ -23,6 +26,9 @@ public:
     static void print_summary(const ProcessMemorySummary& s);
     static void print_injection_report(const ProcessInjectionReport& report);
     static void print_hook_report(const HookReport& report);
+    static void print_patch_report(const PatchReport& report);
+    static void print_hollowing_report(const HollowingReport& report);
+    static void print_diff_report(const SnapshotDiffReport& report);
     static void print_pattern_matches(const std::vector<PatternMatch>& matches);
     static void print_dump_result(const DumpResult& res);
 
