@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-11-08
+
+### Added
+- PEB loader and unlinked module forensics (--ldr): traverses PEB loader data (InLoadOrderModuleList, InMemoryOrderModuleList, InInitializationOrderModuleList) and cross-references all committed MEM_IMAGE regions in process virtual memory. Identifies stealth unlinked modules (reflective DLLs unlinked from PEB), phantom LDR entries (DllBase pointing to non-image memory or freed addresses), and list desynchronization.
+- Thread Local Storage (TLS) callback forensics (--tls): inspects IMAGE_DIRECTORY_ENTRY_TLS across loaded modules, reading callback function pointers in AddressOfCallBacks to detect TLS callback injection, callbacks pointing into unbacked private memory (MEM_PRIVATE), and callbacks targeting PAGE_EXECUTE_READWRITE memory.
+- Integrated unlinked module detection (+40) and TLS callback anomalies (+35) into the unified forensic risk scoring engine.
+- Expanded automated unit test suite from 39 to 43 test suites.
+
 ## [1.0.0] - 2026-11-08
 
 ### Added

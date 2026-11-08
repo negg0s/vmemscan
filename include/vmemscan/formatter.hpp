@@ -11,6 +11,7 @@
 #include "vmemscan/indirect_syscall_auditor.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/ioc_extractor.hpp"
+#include "vmemscan/ldr_auditor.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/mitigations_auditor.hpp"
 #include "vmemscan/module_auditor.hpp"
@@ -25,6 +26,7 @@
 #include "vmemscan/syscall_auditor.hpp"
 #include "vmemscan/thread_analyzer.hpp"
 #include "vmemscan/thread_pool_auditor.hpp"
+#include "vmemscan/tls_auditor.hpp"
 #include "vmemscan/veh_auditor.hpp"
 #include "vmemscan/wiped_pe_detector.hpp"
 
@@ -66,6 +68,8 @@ public:
     static void print_mitigations_report(const ProcessMitigationsReport& report);
     static void print_veh_report(const VehAuditReport& report);
     static void print_thread_pool_report(const ThreadPoolAuditReport& report);
+    static void print_ldr_report(const LdrAuditReport& report);
+    static void print_tls_report(const TlsAuditReport& report);
     static void print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk);
     static void print_pattern_matches(const std::vector<PatternMatch>& matches);
     static void print_dump_result(const DumpResult& res);

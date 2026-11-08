@@ -52,7 +52,8 @@ public:
         size_t wiped_pe_headers_count = 0,
         bool has_mitigation_breach = false,
         size_t veh_anomalies_count = 0,
-        size_t thread_pool_anomalies_count = 0
+        size_t thread_pool_anomalies_count = 0,
+        size_t tls_anomalies_count = 0
     );
 
     static std::wstring verdict_to_string(ThreatVerdict v);

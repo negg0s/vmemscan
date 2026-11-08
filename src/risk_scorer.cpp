@@ -35,7 +35,8 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     size_t wiped_pe_headers_count,
     bool has_mitigation_breach,
     size_t veh_anomalies_count,
-    size_t thread_pool_anomalies_count
+    size_t thread_pool_anomalies_count,
+    size_t tls_anomalies_count
 ) {
     RiskScoreBreakdown r{};
     uint32_t score = 0;
@@ -136,8 +137,13 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     }
 
     if (unlinked_modules_count > 0) {
-        score += 15;
-        r.risk_factors.push_back(L"Stealth loaded module unlinked from PEB InLoadOrderModuleList (+15)");
+        score += 40;
+        r.risk_factors.push_back(L"Stealth loaded module unlinked from PEB InLoadOrderModuleList (+40)");
+    }
+
+    if (tls_anomalies_count > 0) {
+        score += 35;
+        r.risk_factors.push_back(L"Thread Local Storage (TLS) callback pointing to unbacked or RWX memory (+35)");
     }
 
     if (high_entropy_regions_count > 0) {

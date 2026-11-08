@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(vmemscan
-    VERSION 1.0.0
+    VERSION 1.1.0
     LANGUAGES CXX
 )
 
@@ -59,6 +59,7 @@ add_library(vmemscan_core STATIC
     include/vmemscan/indirect_syscall_auditor.hpp
     include/vmemscan/injection_detector.hpp
     include/vmemscan/ioc_extractor.hpp
+    include/vmemscan/ldr_auditor.hpp
     include/vmemscan/memory_dumper.hpp
     include/vmemscan/memory_scanner.hpp
     include/vmemscan/mitigations_auditor.hpp
@@ -77,6 +78,7 @@ add_library(vmemscan_core STATIC
     include/vmemscan/syscall_auditor.hpp
     include/vmemscan/thread_analyzer.hpp
     include/vmemscan/thread_pool_auditor.hpp
+    include/vmemscan/tls_auditor.hpp
     include/vmemscan/veh_auditor.hpp
     include/vmemscan/wiped_pe_detector.hpp
 
@@ -91,6 +93,7 @@ add_library(vmemscan_core STATIC
     src/indirect_syscall_auditor.cpp
     src/injection_detector.cpp
     src/ioc_extractor.cpp
+    src/ldr_auditor.cpp
     src/memory_dumper.cpp
     src/memory_scanner.cpp
     src/mitigations_auditor.cpp
@@ -108,6 +111,7 @@ add_library(vmemscan_core STATIC
     src/syscall_auditor.cpp
     src/thread_analyzer.cpp
     src/thread_pool_auditor.cpp
+    src/tls_auditor.cpp
     src/veh_auditor.cpp
     src/wiped_pe_detector.cpp
 )

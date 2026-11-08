@@ -841,6 +841,64 @@ void Formatter::print_thread_pool_report(const ThreadPoolAuditReport& report) {
     std::wcout << L"====================================================================================================\n\n";
 }
 
+void Formatter::print_ldr_report(const LdrAuditReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" PEB LOADER & UNLINKED MODULE FORENSICS: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Registered PEB Modules    : " << report.peb_modules_count << L"\n";
+    std::wcout << L"  Mapped MEM_IMAGE Regions  : " << report.mapped_images_count << L"\n";
+    std::wcout << L"  Unlinked (Hidden) Modules : " << report.unlinked_count << L"\n";
+    std::wcout << L"  Phantom PEB Entries       : " << report.phantom_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty()) {
+        std::wcout << L"  Zero PEB loader anomalies detected. All mapped PE images match registered PEB loader entries.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [" << (a.is_critical ? L"CRITICAL PEB ANOMALY" : L"PEB DESYNC WARNING") << L"] "
+                       << L"Module Base: " << to_hex_string(a.module_base) << L"\n";
+            std::wcout << L"    Anomaly Type      : " << LdrAuditor::anomaly_type_to_string(a.type) << L"\n";
+            if (!a.module_name.empty()) {
+                std::wcout << L"    Module Name       : " << a.module_name << L"\n";
+            }
+            if (!a.module_path.empty()) {
+                std::wcout << L"    Module Path       : " << a.module_path << L"\n";
+            }
+            if (a.size_of_image > 0) {
+                std::wcout << L"    Size of Image     : 0x" << std::hex << a.size_of_image << std::dec << L" (" << format_bytes(a.size_of_image) << L")\n";
+            }
+            std::wcout << L"    Details           : " << a.anomaly_description << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_tls_report(const TlsAuditReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" THREAD LOCAL STORAGE (TLS) CALLBACK FORENSICS: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Modules with TLS Directory: " << report.modules_with_tls_count << L"\n";
+    std::wcout << L"  Total Callbacks Inspected : " << report.total_callbacks_scanned << L"\n";
+    std::wcout << L"  Anomalous Callbacks Found : " << report.anomalous_callbacks_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty()) {
+        std::wcout << L"  Zero anomalous TLS callbacks detected. All callbacks point to valid module code sections.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [" << (a.is_critical ? L"CRITICAL TLS HIJACK DETECTED" : L"TLS WARNING") << L"] "
+                       << L"Module: " << a.module_name << L" (Base: " << to_hex_string(a.module_base) << L")\n";
+            std::wcout << L"    Callback Address  : " << to_hex_string(a.callback_address) << L"\n";
+            std::wcout << L"    Anomaly Type      : " << TlsAuditor::anomaly_type_to_string(a.type) << L"\n";
+            std::wcout << L"    Memory Protection : " << a.protection_string << L"\n";
+            std::wcout << L"    Details           : " << a.details << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 void Formatter::print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk) {
     std::wcout << L"\n";
     std::wcout << L"====================================================================================================\n";

@@ -10,6 +10,7 @@
 #include "vmemscan/indirect_syscall_auditor.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/ioc_extractor.hpp"
+#include "vmemscan/ldr_auditor.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/memory_scanner.hpp"
 #include "vmemscan/mitigations_auditor.hpp"
@@ -27,6 +28,7 @@
 #include "vmemscan/syscall_auditor.hpp"
 #include "vmemscan/thread_analyzer.hpp"
 #include "vmemscan/thread_pool_auditor.hpp"
+#include "vmemscan/tls_auditor.hpp"
 #include "vmemscan/veh_auditor.hpp"
 #include "vmemscan/wiped_pe_detector.hpp"
 
@@ -880,6 +882,160 @@ void test_thread_pool_auditor_self() {
     check(rep.pool_anomalies_count == 0, "clean self process has zero thread pool callback anomalies");
 }
 
+void test_ldr_auditor_unlinked_detection() {
+    std::vector<LdrModuleEntry> peb_modules;
+    LdrModuleEntry m1{};
+    m1.dll_base = 0x7FFA0000;
+    m1.entry_point = 0x7FFA1000;
+    m1.size_of_image = 0x50000;
+    m1.base_dll_name = L"ntdll.dll";
+    m1.in_load_order = true;
+    m1.in_memory_order = true;
+    m1.in_init_order = true;
+    peb_modules.push_back(m1);
+
+    std::vector<MemoryRegion> regions;
+    // Known legitimate module
+    MemoryRegion r1{};
+    r1.base_address = 0x7FFA0000;
+    r1.allocation_base = 0x7FFA0000;
+    r1.region_size = 0x50000;
+    r1.type = MEM_IMAGE;
+    r1.state = MEM_COMMIT;
+    r1.mapped_file = L"C:\\Windows\\System32\\ntdll.dll";
+    regions.push_back(r1);
+
+    // Unlinked stealth module (mapped image without PEB entry)
+    MemoryRegion r2{};
+    r2.base_address = 0x7FFB50000;
+    r2.allocation_base = 0x7FFB50000;
+    r2.region_size = 0x30000;
+    r2.type = MEM_IMAGE;
+    r2.state = MEM_COMMIT;
+    r2.protect = PAGE_EXECUTE_READ;
+    r2.is_executable = true;
+    r2.mapped_file = L"C:\\Temp\\stealth_payload.dll";
+    regions.push_back(r2);
+
+    auto anomalies = LdrAuditor::evaluate_discrepancies(peb_modules, regions);
+    check(anomalies.size() == 1, "detected exactly 1 unlinked module anomaly");
+    check(anomalies[0].type == LdrAnomalyType::UnlinkedModule, "anomaly classified as UnlinkedModule");
+    check(anomalies[0].module_base == 0x7FFB50000, "correct unlinked module base reported");
+    check(anomalies[0].is_critical, "unlinked module marked critical");
+}
+
+void test_ldr_auditor_phantom_entry() {
+    std::vector<LdrModuleEntry> peb_modules;
+    // Legitimate module
+    LdrModuleEntry m1{};
+    m1.dll_base = 0x7FFA0000;
+    m1.base_dll_name = L"ntdll.dll";
+    m1.in_load_order = true;
+    m1.in_memory_order = true;
+    peb_modules.push_back(m1);
+
+    // Phantom entry: points to unmapped / free address
+    LdrModuleEntry m2{};
+    m2.dll_base = 0x14000000;
+    m2.base_dll_name = L"phantom_hook.dll";
+    m2.in_load_order = true;
+    m2.in_memory_order = false; // also desynced
+    peb_modules.push_back(m2);
+
+    std::vector<MemoryRegion> regions;
+    MemoryRegion r1{};
+    r1.base_address = 0x7FFA0000;
+    r1.allocation_base = 0x7FFA0000;
+    r1.region_size = 0x50000;
+    r1.type = MEM_IMAGE;
+    r1.state = MEM_COMMIT;
+    regions.push_back(r1);
+
+    // Region at 0x14000000 is MEM_PRIVATE, not MEM_IMAGE
+    MemoryRegion r2{};
+    r2.base_address = 0x14000000;
+    r2.allocation_base = 0x14000000;
+    r2.region_size = 0x10000;
+    r2.type = MEM_PRIVATE;
+    r2.state = MEM_COMMIT;
+    regions.push_back(r2);
+
+    auto anomalies = LdrAuditor::evaluate_discrepancies(peb_modules, regions);
+    check(anomalies.size() >= 1, "detected phantom / desync anomalies");
+    bool found_phantom = false;
+    for (const auto& a : anomalies) {
+        if (a.type == LdrAnomalyType::PhantomEntry) {
+            found_phantom = true;
+            check(a.module_base == 0x14000000, "phantom module base matches");
+        }
+    }
+    check(found_phantom, "phantom PEB entry detected successfully");
+}
+
+void test_tls_auditor_unbacked_callback() {
+    uint64_t mod_base = 0x7FFA0000;
+    uint64_t mod_size = 0x20000;
+
+    std::vector<MemoryRegion> regions;
+    MemoryRegion r_mod{};
+    r_mod.base_address = mod_base;
+    r_mod.region_size = mod_size;
+    r_mod.type = MEM_IMAGE;
+    r_mod.state = MEM_COMMIT;
+    r_mod.protect = PAGE_EXECUTE_READ;
+    regions.push_back(r_mod);
+
+    // Injected private shellcode memory region
+    MemoryRegion r_priv{};
+    r_priv.base_address = 0x12000000;
+    r_priv.region_size = 0x10000;
+    r_priv.type = MEM_PRIVATE;
+    r_priv.state = MEM_COMMIT;
+    r_priv.protect = PAGE_EXECUTE_READWRITE;
+    r_priv.is_rwx = true;
+    regions.push_back(r_priv);
+
+    // Callbacks: 1 clean inside module, 1 pointing to private shellcode
+    std::vector<uint64_t> callbacks = {
+        0x7FFA1050,  // Clean callback in module
+        0x12000500   // Hijacked callback in private memory
+    };
+
+    auto anomalies = TlsAuditor::evaluate_tls_module(
+        mod_base, mod_size, L"target.dll", callbacks, regions
+    );
+
+    check(anomalies.size() == 1, "detected exactly 1 TLS callback anomaly");
+    check(anomalies[0].type == TlsAnomalyType::UnbackedCallback, "classified as UnbackedCallback");
+    check(anomalies[0].callback_address == 0x12000500, "flagged hijacked callback address");
+    check(anomalies[0].is_critical, "unbacked callback flagged as critical");
+}
+
+void test_tls_auditor_clean_module() {
+    uint64_t mod_base = 0x7FFA0000;
+    uint64_t mod_size = 0x20000;
+
+    std::vector<MemoryRegion> regions;
+    MemoryRegion r_mod{};
+    r_mod.base_address = mod_base;
+    r_mod.region_size = mod_size;
+    r_mod.type = MEM_IMAGE;
+    r_mod.state = MEM_COMMIT;
+    r_mod.protect = PAGE_EXECUTE_READ;
+    regions.push_back(r_mod);
+
+    std::vector<uint64_t> callbacks = {
+        0x7FFA1050,
+        0x7FFA1200
+    };
+
+    auto anomalies = TlsAuditor::evaluate_tls_module(
+        mod_base, mod_size, L"clean.dll", callbacks, regions
+    );
+
+    check(anomalies.empty(), "clean TLS callbacks produce zero anomalies");
+}
+
 int main() {
     std::wcout << L"[RUN] test_privileges_check\n";
     test_privileges_check();
@@ -998,6 +1154,18 @@ int main() {
     std::wcout << L"[RUN] test_thread_pool_auditor_self\n";
     test_thread_pool_auditor_self();
 
-    std::wcout << L"All 39 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_ldr_auditor_unlinked_detection\n";
+    test_ldr_auditor_unlinked_detection();
+
+    std::wcout << L"[RUN] test_ldr_auditor_phantom_entry\n";
+    test_ldr_auditor_phantom_entry();
+
+    std::wcout << L"[RUN] test_tls_auditor_unbacked_callback\n";
+    test_tls_auditor_unbacked_callback();
+
+    std::wcout << L"[RUN] test_tls_auditor_clean_module\n";
+    test_tls_auditor_clean_module();
+
+    std::wcout << L"All 43 unit test suites passed successfully.\n";
     return 0;
 }

@@ -10,6 +10,7 @@
 #include "vmemscan/indirect_syscall_auditor.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/ioc_extractor.hpp"
+#include "vmemscan/ldr_auditor.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/memory_scanner.hpp"
 #include "vmemscan/mitigations_auditor.hpp"
@@ -27,6 +28,7 @@
 #include "vmemscan/syscall_auditor.hpp"
 #include "vmemscan/thread_analyzer.hpp"
 #include "vmemscan/thread_pool_auditor.hpp"
+#include "vmemscan/tls_auditor.hpp"
 #include "vmemscan/veh_auditor.hpp"
 #include "vmemscan/wiped_pe_detector.hpp"
 
@@ -76,6 +78,8 @@ static void print_help() {
     std::wcout << L"  --mitigations            Audit process security mitigations (DEP, ASLR, ACG, CFG, Child Process Policy)\n";
     std::wcout << L"  --veh                    Audit Vectored Exception Handling (VEH) hooks and PAGE_GUARD traps\n";
     std::wcout << L"  --pool                   Audit Windows Thread Pool worker threads for callback injection (PoolParty)\n";
+    std::wcout << L"  --ldr                    Audit PEB loader module list and detect unlinked / hidden modules\n";
+    std::wcout << L"  --tls                    Audit Thread Local Storage (TLS) callback directories and target memory\n";
     std::wcout << L"  --score                  Compute unified forensic threat score (0-100) and risk assessment\n";
     std::wcout << L"  --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address\n";
     std::wcout << L"  --summary                Display virtual memory allocation statistics and breakdown\n\n";
@@ -111,6 +115,8 @@ static void print_help() {
     std::wcout << L"  vmemscan -p 1234 --mitigations\n";
     std::wcout << L"  vmemscan -p 1234 --veh\n";
     std::wcout << L"  vmemscan -p 1234 --pool\n";
+    std::wcout << L"  vmemscan -p 1234 --ldr\n";
+    std::wcout << L"  vmemscan -p 1234 --tls\n";
     std::wcout << L"  vmemscan -p 1234 --score\n";
     std::wcout << L"  vmemscan -p 1234 --hollowing\n";
     std::wcout << L"  vmemscan -p 1234 --ghosting\n";
@@ -153,6 +159,8 @@ int wmain(int argc, wchar_t* argv[]) {
     bool mode_mitigations = false;
     bool mode_veh = false;
     bool mode_pool = false;
+    bool mode_ldr = false;
+    bool mode_tls = false;
     bool mode_score = false;
     bool mode_iocs = false;
     uint64_t iocs_addr = 0;
@@ -182,7 +190,7 @@ int wmain(int argc, wchar_t* argv[]) {
             print_help();
             return 0;
         } else if (arg == L"-v" || arg == L"--version") {
-            std::wcout << L"vmemscan version 1.0.0\n";
+            std::wcout << L"vmemscan version 1.1.0\n";
             return 0;
         } else if (arg == L"-p" || arg == L"--pid") {
             if (i + 1 < argc) target_pid = static_cast<uint32_t>(_wtoi(argv[++i]));
@@ -236,6 +244,10 @@ int wmain(int argc, wchar_t* argv[]) {
             mode_veh = true;
         } else if (arg == L"--pool") {
             mode_pool = true;
+        } else if (arg == L"--ldr" || arg == L"--unlinked") {
+            mode_ldr = true;
+        } else if (arg == L"--tls") {
+            mode_tls = true;
         } else if (arg == L"--score") {
             mode_score = true;
         } else if (arg == L"--iocs") {
@@ -557,6 +569,22 @@ int wmain(int argc, wchar_t* argv[]) {
         return 0;
     }
 
+    if (mode_ldr) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto ldr_rep = LdrAuditor::audit_process_ldr(hProcess, target_proc.pid, target_proc.name, regions, target_proc.is_64bit);
+        Formatter::print_ldr_report(ldr_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_tls) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto tls_rep = TlsAuditor::audit_process_tls(hProcess, target_proc.pid, target_proc.name, regions);
+        Formatter::print_tls_report(tls_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
     if (mode_score) {
         if (!output_json && !output_csv) Formatter::print_banner();
         auto c2_rep = C2Detector::scan_process_c2(hProcess, target_proc.pid, target_proc.name, regions);
@@ -571,6 +599,8 @@ int wmain(int argc, wchar_t* argv[]) {
         auto mit_rep = MitigationsAuditor::audit_process_mitigations(hProcess, target_proc.pid, target_proc.name);
         auto veh_rep = VehAuditor::audit_process_veh(hProcess, target_proc.pid, target_proc.name, regions);
         auto pool_rep = ThreadPoolAuditor::audit_process_thread_pool(hProcess, target_proc.pid, target_proc.name, regions);
+        auto ldr_rep = LdrAuditor::audit_process_ldr(hProcess, target_proc.pid, target_proc.name, regions, target_proc.is_64bit);
+        auto tls_rep = TlsAuditor::audit_process_tls(hProcess, target_proc.pid, target_proc.name, regions);
         auto patch_rep = PatchDetector::audit_process_patches(hProcess, target_proc.pid, target_proc.name);
         auto iat_rep = IatHookDetector::audit_process_iat(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit, regions, hol_rep.in_memory_image_base);
         auto mod_rep = ModuleAuditor::audit_process_modules(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
@@ -605,7 +635,7 @@ int wmain(int argc, wchar_t* argv[]) {
             unbacked_exec_count,
             rwx_count,
             iat_rep.hooked_imports_count,
-            mod_rep.anomalous_modules_count,
+            (ldr_rep.unlinked_count > 0 ? ldr_rep.unlinked_count : mod_rep.anomalous_modules_count),
             high_entropy_count,
             !peb_rep.anomalies.empty(),
             stk_rep.unbacked_frames_count,
@@ -617,7 +647,8 @@ int wmain(int argc, wchar_t* argv[]) {
             wiped_rep.wiped_pe_count,
             mitigation_breach,
             veh_rep.guard_page_traps_count + veh_rep.anomalous_handlers_count,
-            pool_rep.pool_anomalies_count
+            pool_rep.pool_anomalies_count,
+            tls_rep.anomalous_callbacks_count
         );
 
         Formatter::print_risk_assessment(target_proc, risk);
