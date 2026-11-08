@@ -1,0 +1,13 @@
+build/
+bin/
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.lib
+*.exp
+.vs/
+*.user
+carved_*/
+dumped_*/
+*.bin
