@@ -14,9 +14,19 @@ banned_words = [
     "it's worth noting",
     "in order to",
     "delve",
+    "delving",
+    "tapestry",
+    "multifaceted",
+    "plethora",
+    "testament",
+    "revolutionize",
+    "unleash",
+    "pivotal",
+    "foster",
+    "streamline",
 ]
 
-banned_chars = ["\u2014", "\u2013"]
+banned_chars = ["\u2014", "\u2013", "\u2015", "\u2212"]
 
 violations = []
 root_dir = r"D:\Projects\vmemscan"
@@ -25,16 +35,18 @@ for dirpath, dirnames, filenames in os.walk(root_dir):
     if ".git" in dirpath or "build" in dirpath:
         continue
     for fname in filenames:
-        if fname.endswith((".cpp", ".hpp", ".h", ".txt", ".md", ".yml", ".yaml", ".json")):
+        if fname == "check_constraints.py":
+            continue
+        if fname.endswith((".cpp", ".hpp", ".h", ".txt", ".md", ".yml", ".yaml", ".json", ".cmd", ".bat", ".py")):
             fpath = os.path.join(dirpath, fname)
             with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
                 for c in banned_chars:
                     if c in content:
-                        violations.append(f"Banned char {repr(c)} in {fpath}")
+                        violations.append((fpath, f"Banned char {repr(c)}"))
                 for w in banned_words:
                     if w in content.lower():
-                        violations.append(f"Banned word '{w}' in {fpath}")
+                        violations.append((fpath, f"Banned word '{w}'"))
                 for char in content:
                     cp = ord(char)
                     if (
@@ -45,14 +57,14 @@ for dirpath, dirnames, filenames in os.walk(root_dir):
                         or (0x2600 <= cp <= 0x26FF)
                         or (0x2700 <= cp <= 0x27BF)
                     ):
-                        violations.append(f"Emoji {repr(char)} in {fpath}")
+                        violations.append((fpath, f"Emoji {repr(char)}"))
                         break
 
 if violations:
     print(f"Violations found ({len(violations)}):")
-    for v in violations:
-        print(f"  - {v}")
+    for fpath, v in violations:
+        print(f"  {fpath}: {v}")
     sys.exit(1)
 else:
-    print("All files clean: zero em-dashes, zero emojis, zero banned buzzwords.")
+    print("Zero violations found across all repository files.")
     sys.exit(0)
