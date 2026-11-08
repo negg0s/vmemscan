@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-11-08
+
+### Added
+- Command and Control (C2) beacon configuration scanner (--c2): scans committed private memory for embedded Cobalt Strike v3/v4 beacon configurations (XOR 0x2E, 0x69, plaintext), extracting C2 server endpoints, ports, sleep times, jitter, user-agents, and named pipes.
+- PEB process parameters and command line spoofing auditor (--peb): walks remote PEB ProcessParameters, comparing ImagePathName against physical disk paths to detect argument spoofing and scanning environment blocks for CLR profiler hijacks (COR_ENABLE_PROFILING).
+- In-memory IOC and string extractor with automated categorization (--iocs): carves ASCII and UTF-16LE strings from target memory addresses, categorizing indicators into URLs, Named Pipes, IPv4 addresses, lolbins/system commands, and file paths.
+- Expanded automated unit test suite from 18 to 21 test suites.
+
 ## [0.3.0] - 2026-11-08
 
 ### Added

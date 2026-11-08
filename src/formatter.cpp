@@ -432,6 +432,88 @@ void Formatter::print_module_report(const ModuleAuditReport& report) {
     std::wcout << L"====================================================================================================\n\n";
 }
 
+void Formatter::print_c2_report(const C2ScanReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" COMMAND & CONTROL (C2) BEACON CONFIGURATION SCAN: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Memory Regions Evaluated  : " << report.regions_scanned << L"\n";
+    std::wcout << L"  C2 Beacons Discovered     : " << report.detected_beacons.size() << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.detected_beacons.empty()) {
+        std::wcout << L"  Zero known C2 beacon configurations detected in committed memory regions.\n";
+    } else {
+        for (const auto& b : report.detected_beacons) {
+            std::wcout << L"  [DETECTED C2 ARTIFACT] " << b.framework_name << L" at " << to_hex_string(b.virtual_address) << L"\n";
+            std::wcout << L"    XOR Key       : 0x" << std::hex << static_cast<uint32_t>(b.xor_key) << std::dec << L"\n";
+            if (!b.c2_server.empty())        std::wcout << L"    C2 Server     : " << b.c2_server << L"\n";
+            if (b.c2_port != 0)              std::wcout << L"    C2 Port       : " << b.c2_port << L"\n";
+            if (b.sleep_time_ms != 0)        std::wcout << L"    Sleep Time    : " << b.sleep_time_ms << L" ms (Jitter: " << b.jitter_percent << L"%)\n";
+            if (!b.http_user_agent.empty())  std::wcout << L"    User-Agent    : " << b.http_user_agent << L"\n";
+            if (!b.http_post_uri.empty())    std::wcout << L"    Post URI      : " << b.http_post_uri << L"\n";
+            if (!b.named_pipe.empty())       std::wcout << L"    Named Pipe    : " << b.named_pipe << L"\n";
+            if (!b.spawnto_process.empty())  std::wcout << L"    Spawnto Target: " << b.spawnto_process << L"\n";
+            if (b.watermark != 0)            std::wcout << L"    Watermark ID  : " << b.watermark << L"\n";
+            std::wcout << L"\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_peb_report(const PebAuditReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" PEB & PROCESS PARAMETERS AUDIT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  PEB Address               : " << to_hex_string(report.peb_address) << L"\n";
+    std::wcout << L"  ProcessParameters Address : " << to_hex_string(report.process_parameters_address) << L"\n";
+    std::wcout << L"  ImagePathName (PEB)       : " << report.image_path_name << L"\n";
+    std::wcout << L"  CommandLine (PEB)         : " << report.command_line << L"\n";
+    std::wcout << L"  CurrentDirectory          : " << report.current_directory << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty() && report.suspicious_env_vars.empty()) {
+        std::wcout << L"  Zero PEB anomalies detected. ImagePathName and environment blocks are consistent.\n";
+    } else {
+        for (const auto& an : report.anomalies) {
+            std::wcout << L"  [ALERT] " << PebAuditor::anomaly_to_string(an.type) << L"\n";
+            std::wcout << L"    Details : " << an.description << L"\n";
+            if (!an.expected_value.empty()) std::wcout << L"    Expected: " << an.expected_value << L"\n";
+            if (!an.actual_value.empty())   std::wcout << L"    Actual  : " << an.actual_value << L"\n";
+            std::wcout << L"\n";
+        }
+        for (const auto& env : report.suspicious_env_vars) {
+            std::wcout << L"  [SUSPICIOUS ENV VAR] " << env << L"\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_ioc_report(const IocReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" MEMORY IOC & STRING EXTRACTION REPORT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Target Virtual Address    : " << to_hex_string(report.target_address) << L"\n";
+    std::wcout << L"  Total IOC Artifacts Found : " << report.total_strings_found << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+    std::wcout << std::left << std::setw(18) << L"Address"
+               << std::setw(28) << L"IOC Classification"
+               << std::setw(10) << L"Encoding"
+               << L"Extracted Value\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    for (const auto& art : report.artifacts) {
+        std::wcout << std::left << std::setw(18) << to_hex_string(art.virtual_address)
+                   << std::setw(28) << IocExtractor::ioc_type_to_string(art.type)
+                   << std::setw(10) << (art.is_unicode ? L"UTF-16" : L"ASCII")
+                   << art.value << L"\n";
+    }
+
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 std::string Formatter::to_json(
     const ProcessInfo& proc,
     const ProcessMemorySummary& summary,

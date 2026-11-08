@@ -12,6 +12,9 @@ Written in modern C++20 and pure Win32 / NT Native API. Zero external dependenci
 - **W^X Policy Violation Audit (RWX Memory)**: Detects memory pages marked `PAGE_EXECUTE_READWRITE`, flagging self-modifying code, stagers, and writable code sections.
 - **Reflective PE Injection Discovery**: Inspects executable private memory pages for raw DOS/PE headers (`MZ` signature), detecting in-memory unlinked DLLs.
 - **Shellcode Prologue Pattern Detection**: Cross-examines memory execution blocks against common shellcode prologue sequences (stack alignment, call-pop deltas, register clearings).
+- **C2 Beacon Configuration Extraction**: Scans committed memory for Cobalt Strike v3/v4 configurations, parsing C2 endpoints, ports, sleep times, jitter, and named pipes.
+- **PEB Process Parameters & Argument Spoofing Audit**: Compares remote PEB `ImagePathName` against disk image paths to expose command-line spoofing, and checks environment variables for CLR profiler hijacking (`COR_ENABLE_PROFILING`).
+- **In-Memory IOC & String Classification**: Extracts ASCII and UTF-16LE strings from memory addresses and categorizes IOCs (URLs, Named Pipes, IPv4 addresses, lolbins, file paths).
 - **Thread Context & Execution Forensics**: Queries thread entry points and active instruction pointers (RIP/EIP) to detect threads running from unbacked memory (remote thread injection targets and hijacked threads).
 - **Shannon Entropy Analysis**: Computes byte distribution randomness to reveal packed binaries, encrypted payload buffers, and compressed code blocks (flags entropy >= 7.20).
 - **Loaded Module & Stealth PEB Unlinking Audit**: Traverses remote PEB `InLoadOrderModuleList` and compares against Toolhelp snapshots, detecting unlinked stealth DLLs and libraries loaded from untrusted directories.
@@ -66,6 +69,9 @@ Analysis Modes:
   --threads                Audit thread start addresses and instruction pointers (RIP/EIP)
   --modules                Audit loaded modules for stealth PEB unlinking and suspicious paths
   --entropy                Audit memory entropy to uncover encrypted/packed payload buffers
+  --c2                     Scan committed memory for Cobalt Strike C2 beacon configurations
+  --peb                    Audit PEB parameters, argument spoofing, and CLR profiler hijacks
+  --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address
   --summary                Display virtual memory allocation statistics and breakdown
 
 Memory Snapshot & Diffing:
@@ -124,6 +130,15 @@ vmemscan -p 1234 --modules
 
 # Calculate Shannon entropy over memory regions to detect encrypted payloads
 vmemscan -p 1234 --entropy
+
+# Scan memory regions for embedded Cobalt Strike C2 beacon configurations
+vmemscan -p 1234 --c2
+
+# Audit PEB process parameters, command-line spoofing, and CLR profiler hijacking
+vmemscan -p 1234 --peb
+
+# Extract and classify IOCs (URLs, pipes, IPv4, system commands) from memory region
+vmemscan -p 1234 --iocs 0x7FFA120000
 
 # Save process memory baseline snapshot to file
 vmemscan -p 1234 --save-snapshot baseline.json

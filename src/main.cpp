@@ -1,14 +1,17 @@
+#include "vmemscan/c2_detector.hpp"
 #include "vmemscan/common.hpp"
 #include "vmemscan/entropy_calculator.hpp"
 #include "vmemscan/formatter.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/injection_detector.hpp"
+#include "vmemscan/ioc_extractor.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/memory_scanner.hpp"
 #include "vmemscan/module_auditor.hpp"
 #include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
+#include "vmemscan/peb_auditor.hpp"
 #include "vmemscan/privileges.hpp"
 #include "vmemscan/process_snapshot.hpp"
 #include "vmemscan/snapshot_differ.hpp"
@@ -46,6 +49,9 @@ static void print_help() {
     std::wcout << L"  --threads                Audit thread start addresses and instruction pointers (RIP/EIP)\n";
     std::wcout << L"  --modules                Audit loaded modules for stealth PEB unlinking and suspicious paths\n";
     std::wcout << L"  --entropy                Audit memory entropy to uncover encrypted/packed payload buffers\n";
+    std::wcout << L"  --c2                     Scan committed memory for Cobalt Strike C2 beacon configurations\n";
+    std::wcout << L"  --peb                    Audit PEB parameters, argument spoofing, and CLR profiler hijacks\n";
+    std::wcout << L"  --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address\n";
     std::wcout << L"  --summary                Display virtual memory allocation statistics and breakdown\n\n";
     std::wcout << L"Memory Snapshot & Diffing:\n";
     std::wcout << L"  --save-snapshot <file>   Save process virtual memory snapshot baseline to JSON\n";
@@ -94,6 +100,10 @@ int wmain(int argc, wchar_t* argv[]) {
     bool mode_entropy = false;
     bool mode_threads = false;
     bool mode_modules = false;
+    bool mode_c2 = false;
+    bool mode_peb = false;
+    bool mode_iocs = false;
+    uint64_t iocs_addr = 0;
     bool mode_summary = false;
 
     std::wstring save_snapshot_path;
@@ -120,7 +130,7 @@ int wmain(int argc, wchar_t* argv[]) {
             print_help();
             return 0;
         } else if (arg == L"-v" || arg == L"--version") {
-            std::wcout << L"vmemscan version 0.3.0\n";
+            std::wcout << L"vmemscan version 0.4.0\n";
             return 0;
         } else if (arg == L"-p" || arg == L"--pid") {
             if (i + 1 < argc) target_pid = static_cast<uint32_t>(_wtoi(argv[++i]));
@@ -146,6 +156,13 @@ int wmain(int argc, wchar_t* argv[]) {
             mode_modules = true;
         } else if (arg == L"--entropy") {
             mode_entropy = true;
+        } else if (arg == L"--c2") {
+            mode_c2 = true;
+        } else if (arg == L"--peb") {
+            mode_peb = true;
+        } else if (arg == L"--iocs") {
+            mode_iocs = true;
+            if (i + 1 < argc) iocs_addr = _wcstoui64(argv[++i], nullptr, 0);
         } else if (arg == L"--save-snapshot") {
             if (i + 1 < argc) save_snapshot_path = argv[++i];
         } else if (arg == L"--diff-snapshot") {
@@ -346,6 +363,37 @@ int wmain(int argc, wchar_t* argv[]) {
         if (!output_json && !output_csv) Formatter::print_banner();
         auto ent_rep = EntropyCalculator::audit_process_entropy(hProcess, regions);
         Formatter::print_entropy_report(ent_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_c2) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto c2_rep = C2Detector::scan_process_c2(hProcess, target_proc.pid, target_proc.name, regions);
+        Formatter::print_c2_report(c2_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_peb) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto peb_rep = PebAuditor::audit_process_peb(hProcess, target_proc.pid, target_proc.name, target_proc.path, target_proc.is_64bit);
+        Formatter::print_peb_report(peb_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_iocs) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        uint64_t scan_size = 65536;
+        for (const auto& r : regions) {
+            if (iocs_addr >= r.base_address && iocs_addr < r.base_address + r.region_size) {
+                scan_size = r.region_size - (iocs_addr - r.base_address);
+                break;
+            }
+        }
+        auto ioc_rep = IocExtractor::extract_iocs_from_memory(hProcess, target_proc.pid, target_proc.name, iocs_addr, scan_size);
+        Formatter::print_ioc_report(ioc_rep);
         CloseHandle(hProcess);
         return 0;
     }

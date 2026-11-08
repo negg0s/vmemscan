@@ -1,14 +1,17 @@
+#include "vmemscan/c2_detector.hpp"
 #include "vmemscan/common.hpp"
 #include "vmemscan/entropy_calculator.hpp"
 #include "vmemscan/formatter.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/injection_detector.hpp"
+#include "vmemscan/ioc_extractor.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/memory_scanner.hpp"
 #include "vmemscan/module_auditor.hpp"
 #include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
+#include "vmemscan/peb_auditor.hpp"
 #include "vmemscan/privileges.hpp"
 #include "vmemscan/process_snapshot.hpp"
 #include "vmemscan/snapshot_differ.hpp"
@@ -328,6 +331,83 @@ void test_module_anomaly_strings() {
     check(!s2.empty(), "SuspiciousPath string not empty");
 }
 
+void test_c2_beacon_config_parser() {
+    // Construct synthetic Cobalt Strike beacon config block
+    std::vector<uint8_t> block;
+
+    auto append_be16 = [&](uint16_t v) {
+        block.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+        block.push_back(static_cast<uint8_t>(v & 0xFF));
+    };
+
+    auto append_be32 = [&](uint32_t v) {
+        block.push_back(static_cast<uint8_t>((v >> 24) & 0xFF));
+        block.push_back(static_cast<uint8_t>((v >> 16) & 0xFF));
+        block.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+        block.push_back(static_cast<uint8_t>(v & 0xFF));
+    };
+
+    // Setting 1: BeaconType (1 = HTTP, len 2, type 1)
+    append_be16(1); append_be16(1); append_be16(2); append_be16(1);
+    // Setting 2: Port (len 2, type 1)
+    append_be16(2); append_be16(1); append_be16(2); append_be16(443);
+    // Setting 3: SleepTime (len 4, type 2)
+    append_be16(3); append_be16(2); append_be16(4); append_be32(5000);
+    // Setting 8: C2Server (len 15, type 3)
+    std::string srv = "evil.c2-lab.com";
+    append_be16(8); append_be16(3); append_be16(static_cast<uint16_t>(srv.size()));
+    for (char c : srv) block.push_back(static_cast<uint8_t>(c));
+
+    // Pad with zeros
+    while (block.size() < 128) block.push_back(0);
+
+    // XOR with key 0x2E
+    const uint8_t key = 0x2E;
+    for (size_t i = 0; i < block.size(); ++i) {
+        block[i] ^= key;
+    }
+
+    C2BeaconArtifact art{};
+    bool parsed = C2Detector::parse_beacon_config(block.data(), block.size(), key, 0x10000, art);
+    check(parsed, "synthetic beacon config successfully parsed");
+    check(art.c2_port == 443, "parsed beacon port == 443");
+    check(art.sleep_time_ms == 5000, "parsed sleep time == 5000");
+    check(art.c2_server == L"evil.c2-lab.com", "parsed C2 server matches");
+}
+
+void test_peb_anomaly_strings() {
+    std::wstring s1 = PebAuditor::anomaly_to_string(PebAnomalyType::ImagePathSpoofing);
+    check(!s1.empty(), "ImagePathSpoofing string not empty");
+
+    std::wstring s2 = PebAuditor::anomaly_to_string(PebAnomalyType::DotNetProfilingHijack);
+    check(!s2.empty(), "DotNetProfilingHijack string not empty");
+}
+
+void test_ioc_extractor_classification() {
+    std::string sample = "Padding https://malicious-c2.example/endpoint.php and \\\\.\\pipe\\testpipe and 192.168.1.50 and powershell.exe -enc";
+    std::vector<uint8_t> data(sample.begin(), sample.end());
+
+    auto iocs = IocExtractor::scan_buffer_iocs(data.data(), data.size(), 0x20000, 4);
+    check(!iocs.empty(), "IOCs extracted from buffer");
+
+    bool has_url = false;
+    bool has_pipe = false;
+    bool has_ip = false;
+    bool has_cmd = false;
+
+    for (const auto& ioc : iocs) {
+        if (ioc.type == IocType::Url) has_url = true;
+        if (ioc.type == IocType::NamedPipe) has_pipe = true;
+        if (ioc.type == IocType::IpAddress) has_ip = true;
+        if (ioc.type == IocType::SystemCommand) has_cmd = true;
+    }
+
+    check(has_url, "detected URL IOC");
+    check(has_pipe, "detected Named Pipe IOC");
+    check(has_ip, "detected IPv4 IOC");
+    check(has_cmd, "detected System Command IOC");
+}
+
 int main() {
     std::wcout << L"[RUN] test_privileges_check\n";
     test_privileges_check();
@@ -383,6 +463,15 @@ int main() {
     std::wcout << L"[RUN] test_module_anomaly_strings\n";
     test_module_anomaly_strings();
 
-    std::wcout << L"All 18 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_c2_beacon_config_parser\n";
+    test_c2_beacon_config_parser();
+
+    std::wcout << L"[RUN] test_peb_anomaly_strings\n";
+    test_peb_anomaly_strings();
+
+    std::wcout << L"[RUN] test_ioc_extractor_classification\n";
+    test_ioc_extractor_classification();
+
+    std::wcout << L"All 21 unit test suites passed successfully.\n";
     return 0;
 }

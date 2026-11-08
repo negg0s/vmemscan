@@ -1,14 +1,17 @@
 #pragma once
 
+#include "vmemscan/c2_detector.hpp"
 #include "vmemscan/common.hpp"
 #include "vmemscan/entropy_calculator.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/injection_detector.hpp"
+#include "vmemscan/ioc_extractor.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/module_auditor.hpp"
 #include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
+#include "vmemscan/peb_auditor.hpp"
 #include "vmemscan/snapshot_differ.hpp"
 #include "vmemscan/thread_analyzer.hpp"
 
@@ -35,6 +38,9 @@ public:
     static void print_entropy_report(const std::vector<EntropyReport>& reports);
     static void print_thread_report(const ThreadAuditReport& report);
     static void print_module_report(const ModuleAuditReport& report);
+    static void print_c2_report(const C2ScanReport& report);
+    static void print_peb_report(const PebAuditReport& report);
+    static void print_ioc_report(const IocReport& report);
     static void print_pattern_matches(const std::vector<PatternMatch>& matches);
     static void print_dump_result(const DumpResult& res);
 
