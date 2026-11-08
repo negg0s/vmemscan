@@ -31,6 +31,8 @@ Written in modern C++20 and pure Win32 / NT Native API. Zero external dependenci
 - **Anti-Debugging & Instrumentation Forensics**: Queries kernel debug ports (`ProcessDebugPort`), debug flags (`ProcessDebugFlags`), debug objects (`ProcessDebugObjectHandle`), PEB `BeingDebugged` and `NtGlobalFlag` heap validation flags, and scans thread hardware debug registers (`DR0`-`DR7`) for VEH hooking and analysis evasion.
 - **Wiped & Obfuscated PE Header Forensics**: Scans committed private memory regions for in-memory PE images whose DOS headers (`MZ` magic) have been zeroed or whose section headers have been obfuscated to defeat memory carvers and naive PE scanners.
 - **Process Security Mitigations & Exploit Defense Audit**: Queries `GetProcessMitigationPolicy` to assess DEP, Control Flow Guard (CFG), Arbitrary Code Guard (ACG), binary signature enforcement, remote image loading, and child process policies.
+- **Vectored Exception Handling (VEH) & PAGE_GUARD Trap Forensics**: Audits memory regions for unexpected `PAGE_GUARD` modifiers on executable and private pages (used to catch execution via `STATUS_GUARD_PAGE_VIOLATION` for VEH hooks), and inspects top-level unhandled exception filter pointers for redirections to unbacked memory.
+- **Thread Pool & Work Item Callback Forensics**: Inspects Windows Thread Pool worker threads (`TppWorkerThread`, `TppWaiterpThread`), auditing worker dispatch call stacks to uncover PoolParty callback injection (`TP_WORK`, `TP_TIMER`, `TP_WAIT` callbacks dispatched to unbacked private memory or RWX pages).
 - **Unified Forensic Risk Scoring Engine**: Evaluates active indicators across injection, hollowing, direct syscalls, indirect syscalls, thread contexts, stack return addresses, and telemetry patches to assign a normalized 0-100 risk score and operational threat verdict.
 - **Virtual Memory Snapshot Baseline & Diffing**: Captures memory state baselines to JSON and detects late code injections, W^X protection escalations, and modified executable pages.
 - **Memory Region Dumper & PE Fixup**: Dumps target memory regions to disk, automatically reconstructing PE section alignment and raw pointers for analysis in static disassemblers.
@@ -92,6 +94,8 @@ Analysis Modes:
   --anti-debug             Audit kernel debug ports, PEB debug flags, and hardware breakpoints (DR0-DR7)
   --wiped-pe               Audit memory regions for wiped DOS headers and obfuscated PE structures
   --mitigations            Audit process exploit mitigations (DEP, ASLR, ACG, CFG, Child Process Policy)
+  --veh                    Audit Vectored Exception Handling (VEH) hooks and PAGE_GUARD traps
+  --pool                   Audit Windows Thread Pool worker threads for callback injection (PoolParty)
   --score                  Compute unified forensic threat score (0-100) and risk assessment
   --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address
   --summary                Display virtual memory allocation statistics and breakdown
@@ -188,6 +192,12 @@ vmemscan -p 1234 --wiped-pe
 
 # Audit process exploit mitigations (DEP, ASLR, ACG, CFG, Child Process Policy)
 vmemscan -p 1234 --mitigations
+
+# Audit process for Vectored Exception Handling (VEH) hooks and PAGE_GUARD traps
+vmemscan -p 1234 --veh
+
+# Audit Windows Thread Pool worker threads for callback injection (PoolParty)
+vmemscan -p 1234 --pool
 
 # Compute unified forensic threat score and operational verdict
 vmemscan -p 1234 --score

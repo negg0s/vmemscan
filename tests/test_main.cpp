@@ -26,6 +26,8 @@
 #include "vmemscan/stack_auditor.hpp"
 #include "vmemscan/syscall_auditor.hpp"
 #include "vmemscan/thread_analyzer.hpp"
+#include "vmemscan/thread_pool_auditor.hpp"
+#include "vmemscan/veh_auditor.hpp"
 #include "vmemscan/wiped_pe_detector.hpp"
 
 #include <cassert>
@@ -793,6 +795,91 @@ void test_mitigations_auditor_self() {
     check(!rep.policies.empty(), "successfully retrieved exploit mitigation policies");
 }
 
+void test_veh_auditor_guard_trap() {
+    std::vector<MemoryRegion> regions;
+
+    MemoryRegion r_guard{};
+    r_guard.base_address = 0x7FFF1000;
+    r_guard.region_size = 0x1000;
+    r_guard.state = MEM_COMMIT;
+    r_guard.type = MEM_PRIVATE;
+    r_guard.protect = PAGE_EXECUTE_READ | PAGE_GUARD;
+    r_guard.is_executable = true;
+    r_guard.is_unbacked_executable = true;
+    regions.push_back(r_guard);
+
+    MemoryRegion r_normal{};
+    r_normal.base_address = 0x7FFF2000;
+    r_normal.region_size = 0x1000;
+    r_normal.state = MEM_COMMIT;
+    r_normal.type = MEM_IMAGE;
+    r_normal.protect = PAGE_EXECUTE_READ;
+    r_normal.is_executable = true;
+    regions.push_back(r_normal);
+
+    auto traps = VehAuditor::scan_regions_for_guard_traps(regions);
+    check(traps.size() == 1, "detected exactly 1 PAGE_GUARD trap");
+    check(traps[0].is_guard_page_trap, "is_guard_page_trap is true");
+    check(traps[0].target_address == 0x7FFF1000, "correct target address for guard trap");
+    check(traps[0].memory_protection == (PAGE_EXECUTE_READ | PAGE_GUARD), "correct memory protection flagged");
+}
+
+void test_thread_pool_worker_stack_simulation() {
+    std::vector<MemoryRegion> regions;
+
+    MemoryRegion r_ntdll{};
+    r_ntdll.base_address = 0x7FFE0000;
+    r_ntdll.region_size = 0x20000;
+    r_ntdll.state = MEM_COMMIT;
+    r_ntdll.type = MEM_IMAGE;
+    r_ntdll.protect = PAGE_EXECUTE_READ;
+    r_ntdll.is_executable = true;
+    r_ntdll.mapped_file = L"C:\\Windows\\System32\\ntdll.dll";
+    regions.push_back(r_ntdll);
+
+    MemoryRegion r_rwx{};
+    r_rwx.base_address = 0x14002000;
+    r_rwx.region_size = 0x10000;
+    r_rwx.state = MEM_COMMIT;
+    r_rwx.type = MEM_PRIVATE;
+    r_rwx.protect = PAGE_EXECUTE_READWRITE;
+    r_rwx.is_executable = true;
+    r_rwx.is_rwx = true;
+    r_rwx.is_unbacked_executable = true;
+    regions.push_back(r_rwx);
+
+    uint64_t stack_slots[3] = {
+        0x7FFE1050,  // Clean ntdll frame
+        0x14002500,  // Injected RWX callback (PoolParty)
+        0x00000000
+    };
+
+    auto anomalies = ThreadPoolAuditor::scan_worker_stack(
+        6001, 0x7FFE1000, stack_slots, 3, regions
+    );
+
+    check(anomalies.size() == 1, "detected exactly 1 thread pool callback anomaly");
+    check(anomalies[0].thread_id == 6001, "correct thread ID flagged");
+    check(anomalies[0].callback_address == 0x14002500, "correct callback address flagged");
+    check(anomalies[0].is_rwx, "callback is in RWX memory");
+}
+
+void test_thread_pool_auditor_self() {
+    auto scan_res = MemoryScanner::scan_process_memory(GetCurrentProcess());
+    check(scan_res.has_value(), "memory scan succeeded for thread pool audit");
+
+    auto rep = ThreadPoolAuditor::audit_process_thread_pool(
+        GetCurrentProcess(),
+        GetCurrentProcessId(),
+        L"vmemscan_tests.exe",
+        scan_res.value()
+    );
+
+    check(rep.pid == GetCurrentProcessId(), "self pid matches in thread pool audit");
+    check(rep.process_name == L"vmemscan_tests.exe", "process name matches in thread pool audit");
+    check(rep.pool_anomalies_count == 0, "clean self process has zero thread pool callback anomalies");
+}
+
 int main() {
     std::wcout << L"[RUN] test_privileges_check\n";
     test_privileges_check();
@@ -902,6 +989,15 @@ int main() {
     std::wcout << L"[RUN] test_mitigations_auditor_self\n";
     test_mitigations_auditor_self();
 
-    std::wcout << L"All 36 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_veh_auditor_guard_trap\n";
+    test_veh_auditor_guard_trap();
+
+    std::wcout << L"[RUN] test_thread_pool_worker_stack_simulation\n";
+    test_thread_pool_worker_stack_simulation();
+
+    std::wcout << L"[RUN] test_thread_pool_auditor_self\n";
+    test_thread_pool_auditor_self();
+
+    std::wcout << L"All 39 unit test suites passed successfully.\n";
     return 0;
 }

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0] - 2026-11-08
+
+### Added
+- Vectored Exception Handling (VEH) and PAGE_GUARD trap forensics (--veh): audits committed memory regions for unexpected PAGE_GUARD trap modifiers on executable and private memory pages (used by memory hooking engines and VEH evasion to intercept code execution), and inspects top-level unhandled exception filter pointers for redirections to unbacked memory.
+- Windows Thread Pool and asynchronous work item injection forensics (--pool): inspects thread pool worker threads (TppWorkerThread / TppWaiterpThread), auditing worker call stacks and dispatch frames to uncover PoolParty work item injection (TP_WORK, TP_TIMER, TP_WAIT callbacks executing in unbacked private memory or RWX pages).
+- Integrated thread pool callback injection (+40) and VEH / PAGE_GUARD traps (+35) into the unified forensic risk scoring engine.
+- Expanded automated unit test suite from 36 to 39 test suites.
+
 ## [0.9.0] - 2026-11-08
 
 ### Added

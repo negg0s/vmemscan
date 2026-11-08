@@ -50,7 +50,9 @@ public:
         size_t sleep_masked_regions_count = 0,
         bool has_anti_debug = false,
         size_t wiped_pe_headers_count = 0,
-        bool has_mitigation_breach = false
+        bool has_mitigation_breach = false,
+        size_t veh_anomalies_count = 0,
+        size_t thread_pool_anomalies_count = 0
     );
 
     static std::wstring verdict_to_string(ThreatVerdict v);

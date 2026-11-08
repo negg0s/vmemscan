@@ -789,6 +789,58 @@ void Formatter::print_mitigations_report(const ProcessMitigationsReport& report)
     std::wcout << L"====================================================================================================\n\n";
 }
 
+void Formatter::print_veh_report(const VehAuditReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" VECTORED EXCEPTION HANDLING (VEH) & PAGE GUARD FORENSICS: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Regions Evaluated         : " << report.regions_evaluated << L"\n";
+    std::wcout << L"  PAGE_GUARD Traps Active   : " << report.guard_page_traps_count << L"\n";
+    std::wcout << L"  Anomalous VEH Handlers    : " << report.anomalous_handlers_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty()) {
+        std::wcout << L"  Zero VEH anomalies or PAGE_GUARD traps detected. Normal exception dispatch state.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [EXCEPTION ANOMALY DETECTED] Target Address: " << to_hex_string(a.target_address) << L"\n";
+            std::wcout << L"    Anomaly Type      : " << a.anomaly_type << L"\n";
+            if (!a.mapped_module.empty()) {
+                std::wcout << L"    Module            : " << a.mapped_module << L"\n";
+            }
+            std::wcout << L"    Memory Protection : " << a.protection_string << L"\n";
+            std::wcout << L"    Details           : " << a.details << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_thread_pool_report(const ThreadPoolAuditReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" THREAD POOL & ASYNCHRONOUS WORK ITEM FORENSICS: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Worker Threads Inspected  : " << report.pool_workers_scanned << L"\n";
+    std::wcout << L"  Callback Anomalies Found  : " << report.pool_anomalies_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.pool_anomalies_count == 0) {
+        std::wcout << L"  Zero thread pool callback anomalies detected. All worker dispatch targets resolve to clean modules.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [THREAD POOL INJECTION DETECTED] Thread TID: " << a.thread_id << L"\n";
+            std::wcout << L"    Worker Start Address : " << to_hex_string(a.worker_start_address) << L"\n";
+            std::wcout << L"    Callback Address     : " << to_hex_string(a.callback_address) << L"\n";
+            if (!a.callback_module.empty()) {
+                std::wcout << L"    Callback Module      : " << a.callback_module << L"\n";
+            }
+            std::wcout << L"    Memory Protection    : " << a.protection_string << L"\n";
+            std::wcout << L"    Details              : " << a.anomaly_description << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 void Formatter::print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk) {
     std::wcout << L"\n";
     std::wcout << L"====================================================================================================\n";

@@ -33,7 +33,9 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     size_t sleep_masked_regions_count,
     bool has_anti_debug,
     size_t wiped_pe_headers_count,
-    bool has_mitigation_breach
+    bool has_mitigation_breach,
+    size_t veh_anomalies_count,
+    size_t thread_pool_anomalies_count
 ) {
     RiskScoreBreakdown r{};
     uint32_t score = 0;
@@ -66,6 +68,16 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     if (wiped_pe_headers_count > 0) {
         score += 40;
         r.risk_factors.push_back(L"Wiped or obfuscated PE headers (DOS header erased in unbacked memory) (+40)");
+    }
+
+    if (thread_pool_anomalies_count > 0) {
+        score += 40;
+        r.risk_factors.push_back(L"Thread pool worker callback dispatched to unbacked memory (PoolParty injection) (+40)");
+    }
+
+    if (veh_anomalies_count > 0) {
+        score += 35;
+        r.risk_factors.push_back(L"Vectored Exception Handling (VEH) hook or PAGE_GUARD trap detected (+35)");
     }
 
     if (has_mitigation_breach) {
