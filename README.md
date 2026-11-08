@@ -12,7 +12,9 @@ Written in modern C++20 and pure Win32 / NT Native API. Zero external dependenci
 - **W^X Policy Violation Audit (RWX Memory)**: Detects memory pages marked `PAGE_EXECUTE_READWRITE`, flagging self-modifying code, stagers, and writable code sections.
 - **Reflective PE Injection Discovery**: Inspects executable private memory pages for raw DOS/PE headers (`MZ` signature), detecting in-memory unlinked DLLs.
 - **Shellcode Prologue Pattern Detection**: Cross-examines memory execution blocks against common shellcode prologue sequences (stack alignment, call-pop deltas, register clearings).
-- **Thread Start Address Forensics**: Queries thread entry points via `NtQueryInformationThread(ThreadQuerySetWin32StartAddress)` and detects threads running from unbacked memory (remote thread injection targets).
+- **Thread Context & Execution Forensics**: Queries thread entry points and active instruction pointers (RIP/EIP) to detect threads running from unbacked memory (remote thread injection targets and hijacked threads).
+- **Shannon Entropy Analysis**: Computes byte distribution randomness to reveal packed binaries, encrypted payload buffers, and compressed code blocks (flags entropy >= 7.20).
+- **Loaded Module & Stealth PEB Unlinking Audit**: Traverses remote PEB `InLoadOrderModuleList` and compares against Toolhelp snapshots, detecting unlinked stealth DLLs and libraries loaded from untrusted directories.
 - **Inline API Hook Detection**: Compares in-memory instruction bytes of critical system APIs in `ntdll.dll` against clean disk bytes, detecting relative jumps, indirect jumps, and user-mode rootkit hooks.
 - **Security Telemetry Patch Detection**: Audits in-memory tampering of Event Tracing for Windows (ETW: `EtwEventWrite`, `EtwEventWriteFull`, `NtTraceEvent`) and Antimalware Scan Interface (AMSI: `AmsiScanBuffer`, `AmsiScanString`, `AmsiOpenSession`) security functions.
 - **Process Hollowing & Header Stomping Forensics**: Queries the remote PEB to extract `ImageBaseAddress`, compares in-memory entry points and image size against on-disk PE headers, and inspects entry points for redirection stubs.
@@ -61,6 +63,9 @@ Analysis Modes:
   --hooks                  Audit inline API hooks in loaded system libraries
   --patches                Audit telemetry bypasses (ETW and AMSI in-memory patches)
   --hollowing              Audit process hollowing and PE entry point integrity
+  --threads                Audit thread start addresses and instruction pointers (RIP/EIP)
+  --modules                Audit loaded modules for stealth PEB unlinking and suspicious paths
+  --entropy                Audit memory entropy to uncover encrypted/packed payload buffers
   --summary                Display virtual memory allocation statistics and breakdown
 
 Memory Snapshot & Diffing:
@@ -110,6 +115,15 @@ vmemscan -p 1234 --patches
 
 # Verify PE headers and entry point against on-disk image to detect hollowing
 vmemscan -p 1234 --hollowing
+
+# Audit thread execution pointers to detect unbacked and RWX execution
+vmemscan -p 1234 --threads
+
+# Audit loaded modules to detect stealth PEB unlinking and untrusted paths
+vmemscan -p 1234 --modules
+
+# Calculate Shannon entropy over memory regions to detect encrypted payloads
+vmemscan -p 1234 --entropy
 
 # Save process memory baseline snapshot to file
 vmemscan -p 1234 --save-snapshot baseline.json

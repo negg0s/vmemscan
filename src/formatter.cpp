@@ -336,6 +336,102 @@ void Formatter::print_diff_report(const SnapshotDiffReport& report) {
     std::wcout << L"====================================================================================================\n\n";
 }
 
+void Formatter::print_entropy_report(const std::vector<EntropyReport>& reports) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" MEMORY ENTROPY ANALYSIS (PACKED / ENCRYPTED BUFFER DETECTION)\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << std::left << std::setw(18) << L"Base Address"
+               << std::setw(12) << L"Size"
+               << std::setw(10) << L"Protect"
+               << std::setw(10) << L"Entropy"
+               << std::setw(24) << L"Classification"
+               << L"Mapped File / Tag\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    size_t high_count = 0;
+    for (const auto& r : reports) {
+        if (r.is_high_entropy) ++high_count;
+        std::wostringstream ent_str;
+        ent_str << std::fixed << std::setprecision(2) << r.entropy;
+
+        std::wstring classification = r.is_high_entropy ? L"HIGH (Encrypted/Packed)" : (r.is_unbacked ? L"Unbacked Executable" : L"Normal Code");
+        std::wstring tag = r.mapped_file.empty() ? (r.is_unbacked ? L"[PRIVATE EXECUTABLE]" : L"[HEAP / ANONYMOUS]") : r.mapped_file;
+
+        std::wcout << std::left << std::setw(18) << to_hex_string(r.base_address)
+                   << std::setw(12) << format_bytes(r.region_size)
+                   << std::setw(10) << MemoryScanner::protect_to_string(r.protect)
+                   << std::setw(10) << ent_str.str()
+                   << std::setw(24) << classification
+                   << tag << L"\n";
+    }
+
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+    std::wcout << L" Total regions evaluated: " << reports.size() << L" | High entropy regions (>= 7.20): " << high_count << L"\n";
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_thread_report(const ThreadAuditReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" THREAD EXECUTION & INSTRUCTION POINTER AUDIT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Total Threads Inspected   : " << report.total_threads << L"\n";
+    std::wcout << L"  Suspicious Threads Count  : " << report.suspicious_threads_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.suspicious_threads_count == 0) {
+        std::wcout << L"  Zero suspicious threads detected. All threads start and execute inside mapped image modules.\n";
+    } else {
+        for (const auto& t : report.threads) {
+            if (t.anomalies.empty()) continue;
+
+            std::wcout << L"  [THREAD ANOMALY] Thread ID: " << t.thread_id << L"\n";
+            std::wcout << L"    Start Address : " << to_hex_string(t.start_address)
+                       << (t.start_module.empty() ? L" [UNBACKED PRIVATE MEMORY]" : (L" (" + t.start_module + L")")) << L"\n";
+            std::wcout << L"    Current RIP   : " << to_hex_string(t.rip)
+                       << (t.rip_module.empty() ? L" [UNBACKED PRIVATE MEMORY]" : (L" (" + t.rip_module + L")")) << L"\n";
+            for (const auto& an : t.anomalies) {
+                std::wcout << L"    Alert         : " << ThreadAnalyzer::anomaly_to_string(an) << L"\n";
+            }
+            if (!t.rip_bytes_preview.empty()) {
+                std::wcout << L"    RIP Preview   : " << bytes_to_hex_preview(t.rip_bytes_preview) << L"\n";
+            }
+            std::wcout << L"\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_module_report(const ModuleAuditReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" LOADED MODULES & STEALTH UNLINKING AUDIT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Total Modules Enumerated  : " << report.total_modules << L"\n";
+    std::wcout << L"  Anomalous Modules Detected: " << report.anomalous_modules_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+    std::wcout << std::left << std::setw(18) << L"Base Address"
+               << std::setw(12) << L"Size"
+               << std::setw(8)  << L"In PEB"
+               << std::setw(24) << L"Module Name"
+               << L"Module Path\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    for (const auto& m : report.modules) {
+        std::wcout << std::left << std::setw(18) << to_hex_string(m.base_address)
+                   << std::setw(12) << format_bytes(m.size_of_image)
+                   << std::setw(8)  << (m.in_peb_list ? L"Yes" : L"NO [!]")
+                   << std::setw(24) << m.module_name
+                   << m.module_path << L"\n";
+        for (const auto& an : m.anomalies) {
+            std::wcout << L"    >> Alert: " << ModuleAuditor::anomaly_to_string(an) << L"\n";
+        }
+    }
+
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 std::string Formatter::to_json(
     const ProcessInfo& proc,
     const ProcessMemorySummary& summary,

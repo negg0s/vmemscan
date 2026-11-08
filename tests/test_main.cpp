@@ -1,15 +1,18 @@
 #include "vmemscan/common.hpp"
+#include "vmemscan/entropy_calculator.hpp"
 #include "vmemscan/formatter.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/memory_scanner.hpp"
+#include "vmemscan/module_auditor.hpp"
 #include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
 #include "vmemscan/privileges.hpp"
 #include "vmemscan/process_snapshot.hpp"
 #include "vmemscan/snapshot_differ.hpp"
+#include "vmemscan/thread_analyzer.hpp"
 
 #include <cassert>
 #include <iostream>
@@ -283,6 +286,48 @@ void test_snapshot_diffing() {
     check(diff.new_executable_regions.size() == 1, "detected 1 new executable region");
 }
 
+void test_shannon_entropy_calculation() {
+    // 1. All zeros should have entropy 0.0
+    std::vector<uint8_t> zeros(1024, 0);
+    double e_zero = EntropyCalculator::calculate_entropy(zeros.data(), zeros.size());
+    check(e_zero == 0.0, "zero buffer has 0.0 entropy");
+
+    // 2. Uniform 256 bytes should have entropy 8.0
+    std::vector<uint8_t> uniform(256);
+    for (size_t i = 0; i < 256; ++i) {
+        uniform[i] = static_cast<uint8_t>(i);
+    }
+    double e_uniform = EntropyCalculator::calculate_entropy(uniform.data(), uniform.size());
+    check(std::abs(e_uniform - 8.0) < 0.001, "uniform distribution has 8.0 entropy");
+
+    // 3. Repeating pattern has low entropy
+    std::vector<uint8_t> repeating(1024);
+    for (size_t i = 0; i < 1024; ++i) {
+        repeating[i] = static_cast<uint8_t>(i % 2);
+    }
+    double e_rep = EntropyCalculator::calculate_entropy(repeating.data(), repeating.size());
+    check(std::abs(e_rep - 1.0) < 0.001, "2-state repeating pattern has 1.0 entropy");
+}
+
+void test_thread_anomaly_strings() {
+    std::wstring s1 = ThreadAnalyzer::anomaly_to_string(ThreadAnomalyType::UnbackedStartAddress);
+    check(!s1.empty(), "UnbackedStartAddress string not empty");
+
+    std::wstring s2 = ThreadAnalyzer::anomaly_to_string(ThreadAnomalyType::UnbackedInstructionPointer);
+    check(!s2.empty(), "UnbackedInstructionPointer string not empty");
+
+    std::wstring s3 = ThreadAnalyzer::anomaly_to_string(ThreadAnomalyType::RwxExecution);
+    check(!s3.empty(), "RwxExecution string not empty");
+}
+
+void test_module_anomaly_strings() {
+    std::wstring s1 = ModuleAuditor::anomaly_to_string(ModuleAnomalyType::UnlinkedFromPeb);
+    check(!s1.empty(), "UnlinkedFromPeb string not empty");
+
+    std::wstring s2 = ModuleAuditor::anomaly_to_string(ModuleAnomalyType::SuspiciousPath);
+    check(!s2.empty(), "SuspiciousPath string not empty");
+}
+
 int main() {
     std::wcout << L"[RUN] test_privileges_check\n";
     test_privileges_check();
@@ -329,6 +374,15 @@ int main() {
     std::wcout << L"[RUN] test_snapshot_diffing\n";
     test_snapshot_diffing();
 
-    std::wcout << L"All 15 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_shannon_entropy_calculation\n";
+    test_shannon_entropy_calculation();
+
+    std::wcout << L"[RUN] test_thread_anomaly_strings\n";
+    test_thread_anomaly_strings();
+
+    std::wcout << L"[RUN] test_module_anomaly_strings\n";
+    test_module_anomaly_strings();
+
+    std::wcout << L"All 18 unit test suites passed successfully.\n";
     return 0;
 }

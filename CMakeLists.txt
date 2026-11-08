@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(vmemscan
-    VERSION 0.2.0
+    VERSION 0.3.0
     LANGUAGES CXX
 )
 
@@ -48,30 +48,36 @@ endif()
 # Core static library
 add_library(vmemscan_core STATIC
     include/vmemscan/common.hpp
+    include/vmemscan/entropy_calculator.hpp
     include/vmemscan/formatter.hpp
     include/vmemscan/hook_detector.hpp
     include/vmemscan/hollowing_detector.hpp
     include/vmemscan/injection_detector.hpp
     include/vmemscan/memory_dumper.hpp
     include/vmemscan/memory_scanner.hpp
+    include/vmemscan/module_auditor.hpp
     include/vmemscan/nt_defs.hpp
     include/vmemscan/patch_detector.hpp
     include/vmemscan/pattern_scanner.hpp
     include/vmemscan/privileges.hpp
     include/vmemscan/process_snapshot.hpp
     include/vmemscan/snapshot_differ.hpp
+    include/vmemscan/thread_analyzer.hpp
 
+    src/entropy_calculator.cpp
     src/formatter.cpp
     src/hook_detector.cpp
     src/hollowing_detector.cpp
     src/injection_detector.cpp
     src/memory_dumper.cpp
     src/memory_scanner.cpp
+    src/module_auditor.cpp
     src/patch_detector.cpp
     src/pattern_scanner.cpp
     src/privileges.cpp
     src/process_snapshot.cpp
     src/snapshot_differ.cpp
+    src/thread_analyzer.cpp
 )
 
 target_include_directories(vmemscan_core PUBLIC include)

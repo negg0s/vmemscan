@@ -1,13 +1,16 @@
 #pragma once
 
 #include "vmemscan/common.hpp"
+#include "vmemscan/entropy_calculator.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/memory_dumper.hpp"
+#include "vmemscan/module_auditor.hpp"
 #include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
 #include "vmemscan/snapshot_differ.hpp"
+#include "vmemscan/thread_analyzer.hpp"
 
 #include <string>
 #include <vector>
@@ -29,6 +32,9 @@ public:
     static void print_patch_report(const PatchReport& report);
     static void print_hollowing_report(const HollowingReport& report);
     static void print_diff_report(const SnapshotDiffReport& report);
+    static void print_entropy_report(const std::vector<EntropyReport>& reports);
+    static void print_thread_report(const ThreadAuditReport& report);
+    static void print_module_report(const ModuleAuditReport& report);
     static void print_pattern_matches(const std::vector<PatternMatch>& matches);
     static void print_dump_result(const DumpResult& res);
 

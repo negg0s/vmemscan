@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-11-08
+
+### Added
+- Shannon entropy memory analyzer (--entropy): calculates byte distribution randomness over virtual memory blocks to detect packed payloads, compressed assets, and encrypted shellcode stagers (highlighting entropy >= 7.20).
+- Thread instruction pointer and context audit (--threads): inspects active thread RIP/EIP and start addresses to detect threads executing inside unbacked memory (MEM_PRIVATE) and RWX pages.
+- Loaded module and stealth PEB unlinking auditor (--modules): walks remote PEB InLoadOrderModuleList and compares with Toolhelp snapshots to expose stealth unlinked modules and DLLs loaded from untrusted or temporary paths.
+- Expanded automated unit test suite from 15 to 18 test suites.
+
 ## [0.2.0] - 2026-11-08
 
 ### Added

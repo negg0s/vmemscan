@@ -1,15 +1,18 @@
 #include "vmemscan/common.hpp"
+#include "vmemscan/entropy_calculator.hpp"
 #include "vmemscan/formatter.hpp"
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/memory_dumper.hpp"
 #include "vmemscan/memory_scanner.hpp"
+#include "vmemscan/module_auditor.hpp"
 #include "vmemscan/patch_detector.hpp"
 #include "vmemscan/pattern_scanner.hpp"
 #include "vmemscan/privileges.hpp"
 #include "vmemscan/process_snapshot.hpp"
 #include "vmemscan/snapshot_differ.hpp"
+#include "vmemscan/thread_analyzer.hpp"
 
 #include <iostream>
 #include <string>
@@ -40,6 +43,9 @@ static void print_help() {
     std::wcout << L"  --hooks                  Audit inline API hooks in loaded system libraries\n";
     std::wcout << L"  --patches                Audit telemetry bypasses (ETW and AMSI in-memory patches)\n";
     std::wcout << L"  --hollowing              Audit process hollowing and PE entry point integrity\n";
+    std::wcout << L"  --threads                Audit thread start addresses and instruction pointers (RIP/EIP)\n";
+    std::wcout << L"  --modules                Audit loaded modules for stealth PEB unlinking and suspicious paths\n";
+    std::wcout << L"  --entropy                Audit memory entropy to uncover encrypted/packed payload buffers\n";
     std::wcout << L"  --summary                Display virtual memory allocation statistics and breakdown\n\n";
     std::wcout << L"Memory Snapshot & Diffing:\n";
     std::wcout << L"  --save-snapshot <file>   Save process virtual memory snapshot baseline to JSON\n";
@@ -85,6 +91,9 @@ int wmain(int argc, wchar_t* argv[]) {
     bool mode_hooks = false;
     bool mode_patches = false;
     bool mode_hollowing = false;
+    bool mode_entropy = false;
+    bool mode_threads = false;
+    bool mode_modules = false;
     bool mode_summary = false;
 
     std::wstring save_snapshot_path;
@@ -111,7 +120,7 @@ int wmain(int argc, wchar_t* argv[]) {
             print_help();
             return 0;
         } else if (arg == L"-v" || arg == L"--version") {
-            std::wcout << L"vmemscan version 0.2.0\n";
+            std::wcout << L"vmemscan version 0.3.0\n";
             return 0;
         } else if (arg == L"-p" || arg == L"--pid") {
             if (i + 1 < argc) target_pid = static_cast<uint32_t>(_wtoi(argv[++i]));
@@ -131,6 +140,12 @@ int wmain(int argc, wchar_t* argv[]) {
             mode_patches = true;
         } else if (arg == L"--hollowing") {
             mode_hollowing = true;
+        } else if (arg == L"--threads") {
+            mode_threads = true;
+        } else if (arg == L"--modules") {
+            mode_modules = true;
+        } else if (arg == L"--entropy") {
+            mode_entropy = true;
         } else if (arg == L"--save-snapshot") {
             if (i + 1 < argc) save_snapshot_path = argv[++i];
         } else if (arg == L"--diff-snapshot") {
@@ -307,6 +322,30 @@ int wmain(int argc, wchar_t* argv[]) {
         if (!output_json && !output_csv) Formatter::print_banner();
         auto hollow_rep = HollowingDetector::analyze_process(hProcess, target_proc.pid, target_proc.name, target_proc.path, target_proc.is_64bit);
         Formatter::print_hollowing_report(hollow_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_threads) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto th_rep = ThreadAnalyzer::audit_process_threads(hProcess, target_proc.pid, target_proc.name, regions);
+        Formatter::print_thread_report(th_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_modules) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto mod_rep = ModuleAuditor::audit_process_modules(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
+        Formatter::print_module_report(mod_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_entropy) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto ent_rep = EntropyCalculator::audit_process_entropy(hProcess, regions);
+        Formatter::print_entropy_report(ent_rep);
         CloseHandle(hProcess);
         return 0;
     }
