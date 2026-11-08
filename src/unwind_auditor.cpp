@@ -166,6 +166,19 @@ std::vector<UnwindAnomaly> UnwindAuditor::evaluate_thread_frames(
     return anomalies;
 }
 
+#pragma pack(push, 1)
+struct VmemRuntimeFunctionX64 {
+    DWORD BeginAddress;
+    DWORD EndAddress;
+    DWORD UnwindData;
+};
+
+struct VmemRuntimeFunctionArm64 {
+    DWORD BeginAddress;
+    DWORD UnwindData;
+};
+#pragma pack(pop)
+
 static bool read_module_info(
     HANDLE hProcess,
     uint64_t module_base,
@@ -192,26 +205,58 @@ static bool read_module_info(
     size_of_image = nth.OptionalHeader.SizeOfImage;
 
     const auto& exc_dir = nth.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
-    if (exc_dir.VirtualAddress == 0 || exc_dir.Size < sizeof(RUNTIME_FUNCTION)) {
+    if (exc_dir.VirtualAddress == 0) {
         return true;
     }
 
-    size_t count = exc_dir.Size / sizeof(RUNTIME_FUNCTION);
-    if (count > 500000) count = 500000;
+    if (nth.FileHeader.Machine == IMAGE_FILE_MACHINE_ARM64) {
+        if (exc_dir.Size < sizeof(VmemRuntimeFunctionArm64)) return true;
+        size_t count = exc_dir.Size / sizeof(VmemRuntimeFunctionArm64);
+        if (count > 500000) count = 500000;
 
-    std::vector<RUNTIME_FUNCTION> rf_table(count);
-    if (!ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(module_base + exc_dir.VirtualAddress),
-                           rf_table.data(), count * sizeof(RUNTIME_FUNCTION), &read)) {
-        return true;
-    }
+        std::vector<VmemRuntimeFunctionArm64> rf_table(count);
+        if (!ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(module_base + exc_dir.VirtualAddress),
+                               rf_table.data(), count * sizeof(VmemRuntimeFunctionArm64), &read)) {
+            return true;
+        }
 
-    entries.reserve(count);
-    for (size_t i = 0; i < count; ++i) {
-        UnwindFunctionEntry fe{};
-        fe.begin_rva = rf_table[i].BeginAddress;
-        fe.end_rva = rf_table[i].EndAddress;
-        if (fe.begin_rva < fe.end_rva) {
-            entries.push_back(fe);
+        entries.reserve(count);
+        for (size_t i = 0; i < count; ++i) {
+            UnwindFunctionEntry fe{};
+            fe.begin_rva = rf_table[i].BeginAddress;
+            DWORD flag = rf_table[i].UnwindData & 0x3;
+            DWORD fn_len_instr = (rf_table[i].UnwindData >> 2) & 0x7FF;
+            if (flag != 0 && fn_len_instr > 0) {
+                fe.end_rva = fe.begin_rva + (fn_len_instr * 4);
+            } else if (i + 1 < count && rf_table[i + 1].BeginAddress > fe.begin_rva) {
+                fe.end_rva = rf_table[i + 1].BeginAddress;
+            } else {
+                fe.end_rva = fe.begin_rva + 4;
+            }
+            if (fe.begin_rva < fe.end_rva) {
+                entries.push_back(fe);
+            }
+        }
+    } else {
+        // AMD64 / x64 default
+        if (exc_dir.Size < sizeof(VmemRuntimeFunctionX64)) return true;
+        size_t count = exc_dir.Size / sizeof(VmemRuntimeFunctionX64);
+        if (count > 500000) count = 500000;
+
+        std::vector<VmemRuntimeFunctionX64> rf_table(count);
+        if (!ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(module_base + exc_dir.VirtualAddress),
+                               rf_table.data(), count * sizeof(VmemRuntimeFunctionX64), &read)) {
+            return true;
+        }
+
+        entries.reserve(count);
+        for (size_t i = 0; i < count; ++i) {
+            UnwindFunctionEntry fe{};
+            fe.begin_rva = rf_table[i].BeginAddress;
+            fe.end_rva = rf_table[i].EndAddress;
+            if (fe.begin_rva < fe.end_rva) {
+                entries.push_back(fe);
+            }
         }
     }
 
