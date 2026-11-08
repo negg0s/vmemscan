@@ -100,35 +100,44 @@ StackAuditReport StackAuditor::audit_process_stacks(
             );
 
             if (hThread) {
-#if defined(_M_X64)
+#if defined(_M_X64) || defined(_M_ARM64)
                 DWORD suspend_res = SuspendThread(hThread);
                 if (suspend_res != static_cast<DWORD>(-1)) {
                     CONTEXT ctx{};
                     ctx.ContextFlags = CONTEXT_CONTROL;
-                    if (GetThreadContext(hThread, &ctx) && ctx.Rsp != 0) {
-                        // Sample up to 4096 bytes (512 stack pointer slots) from RSP
-                        const size_t sample_size = 4096;
-                        std::vector<uint8_t> stack_bytes(sample_size);
-                        SIZE_T read = 0;
+                    if (GetThreadContext(hThread, &ctx)) {
+#if defined(_M_X64)
+                        uint64_t sp = ctx.Rsp;
+#elif defined(_M_ARM64)
+                        uint64_t sp = ctx.Sp;
+#endif
+                        if (sp != 0) {
+                            // Sample up to 4096 bytes (512 stack pointer slots) from stack pointer
+                            const size_t sample_size = 4096;
+                            std::vector<uint8_t> stack_bytes(sample_size);
+                            SIZE_T read = 0;
 
-                        if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(ctx.Rsp), stack_bytes.data(), sample_size, &read) && read >= sizeof(uint64_t)) {
-                            rep.total_frames_scanned += (read / sizeof(uint64_t));
+                            if (ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(sp), stack_bytes.data(), sample_size, &read) && read >= sizeof(uint64_t)) {
+                                rep.total_frames_scanned += (read / sizeof(uint64_t));
 
-                            auto found = scan_stack_buffer(
-                                te.th32ThreadID,
-                                stack_bytes.data(),
-                                read,
-                                ctx.Rsp,
-                                regions
-                            );
+                                auto found = scan_stack_buffer(
+                                    te.th32ThreadID,
+                                    stack_bytes.data(),
+                                    read,
+                                    sp,
+                                    regions
+                                );
 
-                            for (auto& a : found) {
-                                rep.anomalies.push_back(std::move(a));
+                                for (auto& a : found) {
+                                    rep.anomalies.push_back(std::move(a));
+                                }
                             }
                         }
                     }
                     ResumeThread(hThread);
                 }
+#else
+                (void)regions;
 #endif
                 CloseHandle(hThread);
             }
