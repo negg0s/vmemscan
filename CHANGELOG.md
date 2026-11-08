@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-11-08
+
+### Added
+- Mapped section view and shared memory forensics (--sections): audits committed MEM_MAPPED virtual memory regions. Detects anonymous executable mapped sections (section view shellcode injection via NtMapViewOfSection without disk backing), executable sections backed by non-executable data files (.dat, .tmp, .txt, .bin, .png), RWX mapped sections (W^X breach), and section protection elevation (views allocated as non-executable and promoted to executable at runtime).
+- Call stack unwind and RUNTIME_FUNCTION forensics (--unwind): inspects active thread stacks, identifying return addresses placed by CALL instructions and verifying them against each module's .pdata Exception Directory (IMAGE_DIRECTORY_ENTRY_EXCEPTION). Uncovers Call Stack Spoofing (synthetic return addresses and code cave execution lacking valid function unwind metadata) and return addresses in unbacked private memory or RWX pages.
+- Integrated section-based code injection (+40) and call stack spoofing (+40) into the unified forensic risk scoring engine.
+- Expanded automated unit test suite from 43 to 48 test suites.
+
 ## [1.1.0] - 2026-11-08
 
 ### Added

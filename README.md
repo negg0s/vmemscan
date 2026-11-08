@@ -98,6 +98,8 @@ Analysis Modes:
   --pool                   Audit Windows Thread Pool worker threads for callback injection (PoolParty)
   --ldr                    Audit PEB loader module list and detect unlinked / hidden modules
   --tls                    Audit Thread Local Storage (TLS) callback directories and target memory
+  --sections               Audit mapped section views and shared memory for anonymous shellcode
+  --unwind                 Audit thread call stack return addresses for .pdata metadata and spoofing
   --score                  Compute unified forensic threat score (0-100) and risk assessment
   --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address
   --summary                Display virtual memory allocation statistics and breakdown
@@ -206,6 +208,12 @@ vmemscan -p 1234 --ldr
 
 # Audit Thread Local Storage (TLS) callback directories for injection and unbacked targets
 vmemscan -p 1234 --tls
+
+# Audit mapped section views and shared memory for anonymous shellcode
+vmemscan -p 1234 --sections
+
+# Audit thread call stack return addresses for missing .pdata metadata and stack spoofing
+vmemscan -p 1234 --unwind
 
 # Compute unified forensic threat score and operational verdict
 vmemscan -p 1234 --score

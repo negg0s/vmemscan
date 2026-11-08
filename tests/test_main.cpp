@@ -22,6 +22,7 @@
 #include "vmemscan/privileges.hpp"
 #include "vmemscan/process_snapshot.hpp"
 #include "vmemscan/risk_scorer.hpp"
+#include "vmemscan/section_auditor.hpp"
 #include "vmemscan/sleep_mask_detector.hpp"
 #include "vmemscan/snapshot_differ.hpp"
 #include "vmemscan/stack_auditor.hpp"
@@ -29,6 +30,7 @@
 #include "vmemscan/thread_analyzer.hpp"
 #include "vmemscan/thread_pool_auditor.hpp"
 #include "vmemscan/tls_auditor.hpp"
+#include "vmemscan/unwind_auditor.hpp"
 #include "vmemscan/veh_auditor.hpp"
 #include "vmemscan/wiped_pe_detector.hpp"
 
@@ -1036,6 +1038,134 @@ void test_tls_auditor_clean_module() {
     check(anomalies.empty(), "clean TLS callbacks produce zero anomalies");
 }
 
+void test_section_auditor_anonymous_exec() {
+    std::vector<MemoryRegion> regions;
+
+    MemoryRegion r_anon{};
+    r_anon.base_address = 0x20000000;
+    r_anon.allocation_base = 0x20000000;
+    r_anon.region_size = 0x10000;
+    r_anon.type = MEM_MAPPED;
+    r_anon.state = MEM_COMMIT;
+    r_anon.protect = PAGE_EXECUTE_READ;
+    r_anon.is_executable = true;
+    r_anon.mapped_file = L""; // Anonymous section
+    regions.push_back(r_anon);
+
+    auto anomalies = SectionAuditor::evaluate_sections(regions);
+    check(anomalies.size() == 1, "detected exactly 1 anonymous section anomaly");
+    check(anomalies[0].type == SectionAnomalyType::AnonymousExecutableSection, "classified as AnonymousExecutableSection");
+    check(anomalies[0].base_address == 0x20000000, "correct base address flagged");
+    check(anomalies[0].is_critical, "anonymous executable section marked critical");
+}
+
+void test_section_auditor_data_file_exec() {
+    std::vector<MemoryRegion> regions;
+
+    MemoryRegion r_data{};
+    r_data.base_address = 0x25000000;
+    r_data.allocation_base = 0x25000000;
+    r_data.region_size = 0x20000;
+    r_data.type = MEM_MAPPED;
+    r_data.state = MEM_COMMIT;
+    r_data.protect = PAGE_EXECUTE_READ;
+    r_data.is_executable = true;
+    r_data.mapped_file = L"C:\\Users\\Public\\beacon_payload.dat";
+    regions.push_back(r_data);
+
+    auto anomalies = SectionAuditor::evaluate_sections(regions);
+    check(anomalies.size() == 1, "detected exactly 1 data file section anomaly");
+    check(anomalies[0].type == SectionAnomalyType::DataFileExecutableSection, "classified as DataFileExecutableSection");
+    check(anomalies[0].base_address == 0x25000000, "flagged base address matches");
+    check(anomalies[0].is_critical, "data file executable section marked critical");
+}
+
+void test_section_auditor_clean() {
+    std::vector<MemoryRegion> regions;
+
+    // Normal NLS table mapped view (read-only)
+    MemoryRegion r_clean{};
+    r_clean.base_address = 0x30000000;
+    r_clean.allocation_base = 0x30000000;
+    r_clean.region_size = 0x5000;
+    r_clean.type = MEM_MAPPED;
+    r_clean.state = MEM_COMMIT;
+    r_clean.protect = PAGE_READONLY;
+    r_clean.alloc_protect = PAGE_READONLY;
+    r_clean.is_executable = false;
+    r_clean.mapped_file = L"C:\\Windows\\System32\\locale.nls";
+    regions.push_back(r_clean);
+
+    auto anomalies = SectionAuditor::evaluate_sections(regions);
+    check(anomalies.empty(), "clean read-only mapped section produces zero anomalies");
+}
+
+void test_unwind_auditor_spoofed_frame() {
+    uint64_t mod_base = 0x7FFA0000;
+    uint64_t mod_size = 0x30000;
+
+    std::vector<UnwindFunctionEntry> funcs = {
+        { 0x1000, 0x1500 },
+        { 0x2000, 0x2800 }
+    };
+
+    std::vector<uint64_t> frames = {
+        0x7FFA1200, // Valid function 1
+        0x7FFA1800  // Fabricated return address (stack spoofing / outside any registered function)
+    };
+
+    std::vector<MemoryRegion> regions;
+    MemoryRegion r_mod{};
+    r_mod.base_address = mod_base;
+    r_mod.region_size = mod_size;
+    r_mod.type = MEM_IMAGE;
+    r_mod.state = MEM_COMMIT;
+    r_mod.protect = PAGE_EXECUTE_READ;
+    r_mod.is_executable = true;
+    regions.push_back(r_mod);
+
+    auto anomalies = UnwindAuditor::evaluate_thread_frames(
+        5001, frames, mod_base, mod_size, L"ntdll.dll", funcs, regions
+    );
+
+    check(anomalies.size() == 1, "detected exactly 1 unwind anomaly");
+    check(anomalies[0].type == UnwindAnomalyType::UnwindMetadataMissing, "classified as UnwindMetadataMissing (Stack Spoofing)");
+    check(anomalies[0].frame_address == 0x7FFA1800, "correct frame address flagged");
+    check(anomalies[0].thread_id == 5001, "thread ID matches");
+    check(anomalies[0].is_critical, "missing unwind metadata marked critical");
+}
+
+void test_unwind_auditor_clean_frame() {
+    uint64_t mod_base = 0x7FFA0000;
+    uint64_t mod_size = 0x30000;
+
+    std::vector<UnwindFunctionEntry> funcs = {
+        { 0x1000, 0x1500 },
+        { 0x2000, 0x2800 }
+    };
+
+    std::vector<uint64_t> frames = {
+        0x7FFA1200,
+        0x7FFA2100
+    };
+
+    std::vector<MemoryRegion> regions;
+    MemoryRegion r_mod{};
+    r_mod.base_address = mod_base;
+    r_mod.region_size = mod_size;
+    r_mod.type = MEM_IMAGE;
+    r_mod.state = MEM_COMMIT;
+    r_mod.protect = PAGE_EXECUTE_READ;
+    r_mod.is_executable = true;
+    regions.push_back(r_mod);
+
+    auto anomalies = UnwindAuditor::evaluate_thread_frames(
+        5002, frames, mod_base, mod_size, L"kernel32.dll", funcs, regions
+    );
+
+    check(anomalies.empty(), "all frames within valid functions produce zero anomalies");
+}
+
 int main() {
     std::wcout << L"[RUN] test_privileges_check\n";
     test_privileges_check();
@@ -1166,6 +1296,21 @@ int main() {
     std::wcout << L"[RUN] test_tls_auditor_clean_module\n";
     test_tls_auditor_clean_module();
 
-    std::wcout << L"All 43 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_section_auditor_anonymous_exec\n";
+    test_section_auditor_anonymous_exec();
+
+    std::wcout << L"[RUN] test_section_auditor_data_file_exec\n";
+    test_section_auditor_data_file_exec();
+
+    std::wcout << L"[RUN] test_section_auditor_clean\n";
+    test_section_auditor_clean();
+
+    std::wcout << L"[RUN] test_unwind_auditor_spoofed_frame\n";
+    test_unwind_auditor_spoofed_frame();
+
+    std::wcout << L"[RUN] test_unwind_auditor_clean_frame\n";
+    test_unwind_auditor_clean_frame();
+
+    std::wcout << L"All 48 unit test suites passed successfully.\n";
     return 0;
 }

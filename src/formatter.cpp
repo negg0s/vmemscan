@@ -899,6 +899,62 @@ void Formatter::print_tls_report(const TlsAuditReport& report) {
     std::wcout << L"====================================================================================================\n\n";
 }
 
+void Formatter::print_sections_report(const SectionAuditReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" MAPPED SECTION VIEW & SHARED MEMORY FORENSICS: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Mapped Regions Inspected  : " << report.mapped_regions_count << L"\n";
+    std::wcout << L"  Executable Mapped Sections: " << report.executable_sections_count << L"\n";
+    std::wcout << L"  Anomalous Section Views   : " << report.anomalous_sections_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty()) {
+        std::wcout << L"  Zero section view anomalies detected. Normal memory mapping and backing file configuration.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [" << (a.is_critical ? L"CRITICAL SECTION ANOMALY" : L"SECTION WARNING") << L"] "
+                       << L"Base Address: " << to_hex_string(a.base_address) << L"\n";
+            std::wcout << L"    Anomaly Type      : " << SectionAuditor::anomaly_type_to_string(a.type) << L"\n";
+            std::wcout << L"    Memory Protection : " << a.protection_string << L"\n";
+            std::wcout << L"    Region Size       : 0x" << std::hex << a.region_size << std::dec << L" (" << format_bytes(a.region_size) << L")\n";
+            if (!a.mapped_file.empty()) {
+                std::wcout << L"    Backing Source    : " << a.mapped_file << L"\n";
+            }
+            std::wcout << L"    Details           : " << a.details << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_unwind_report(const UnwindAuditReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" CALL STACK UNWIND & RUNTIME_FUNCTION FORENSICS: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Threads Inspected         : " << report.threads_inspected << L"\n";
+    std::wcout << L"  Stack Frames Evaluated    : " << report.frames_evaluated << L"\n";
+    std::wcout << L"  Anomalous Frames Detected : " << report.anomalous_frames_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies.empty()) {
+        std::wcout << L"  Zero unwind anomalies detected. All stack frame return addresses correlate to valid function metadata.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [STACK SPOOFING DETECTED] Thread TID: " << a.thread_id
+                       << L" - Frame: " << to_hex_string(a.frame_address) << L"\n";
+            std::wcout << L"    Anomaly Type      : " << UnwindAuditor::anomaly_type_to_string(a.type) << L"\n";
+            if (!a.module_name.empty()) {
+                std::wcout << L"    Module            : " << a.module_name << L"\n";
+                std::wcout << L"    Module Base       : " << to_hex_string(a.module_base) << L"\n";
+                std::wcout << L"    Module RVA        : +0x" << std::hex << a.rva << std::dec << L"\n";
+            }
+            std::wcout << L"    Details           : " << a.details << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 void Formatter::print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk) {
     std::wcout << L"\n";
     std::wcout << L"====================================================================================================\n";

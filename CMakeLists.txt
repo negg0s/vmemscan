@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(vmemscan
-    VERSION 1.1.0
+    VERSION 1.2.0
     LANGUAGES CXX
 )
 
@@ -72,6 +72,7 @@ add_library(vmemscan_core STATIC
     include/vmemscan/privileges.hpp
     include/vmemscan/process_snapshot.hpp
     include/vmemscan/risk_scorer.hpp
+    include/vmemscan/section_auditor.hpp
     include/vmemscan/sleep_mask_detector.hpp
     include/vmemscan/snapshot_differ.hpp
     include/vmemscan/stack_auditor.hpp
@@ -79,6 +80,7 @@ add_library(vmemscan_core STATIC
     include/vmemscan/thread_analyzer.hpp
     include/vmemscan/thread_pool_auditor.hpp
     include/vmemscan/tls_auditor.hpp
+    include/vmemscan/unwind_auditor.hpp
     include/vmemscan/veh_auditor.hpp
     include/vmemscan/wiped_pe_detector.hpp
 
@@ -105,6 +107,7 @@ add_library(vmemscan_core STATIC
     src/privileges.cpp
     src/process_snapshot.cpp
     src/risk_scorer.cpp
+    src/section_auditor.cpp
     src/sleep_mask_detector.cpp
     src/snapshot_differ.cpp
     src/stack_auditor.cpp
@@ -112,6 +115,7 @@ add_library(vmemscan_core STATIC
     src/thread_analyzer.cpp
     src/thread_pool_auditor.cpp
     src/tls_auditor.cpp
+    src/unwind_auditor.cpp
     src/veh_auditor.cpp
     src/wiped_pe_detector.cpp
 )

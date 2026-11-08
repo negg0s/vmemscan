@@ -20,6 +20,7 @@
 #include "vmemscan/pattern_scanner.hpp"
 #include "vmemscan/peb_auditor.hpp"
 #include "vmemscan/risk_scorer.hpp"
+#include "vmemscan/section_auditor.hpp"
 #include "vmemscan/sleep_mask_detector.hpp"
 #include "vmemscan/snapshot_differ.hpp"
 #include "vmemscan/stack_auditor.hpp"
@@ -27,6 +28,7 @@
 #include "vmemscan/thread_analyzer.hpp"
 #include "vmemscan/thread_pool_auditor.hpp"
 #include "vmemscan/tls_auditor.hpp"
+#include "vmemscan/unwind_auditor.hpp"
 #include "vmemscan/veh_auditor.hpp"
 #include "vmemscan/wiped_pe_detector.hpp"
 
@@ -70,6 +72,8 @@ public:
     static void print_thread_pool_report(const ThreadPoolAuditReport& report);
     static void print_ldr_report(const LdrAuditReport& report);
     static void print_tls_report(const TlsAuditReport& report);
+    static void print_sections_report(const SectionAuditReport& report);
+    static void print_unwind_report(const UnwindAuditReport& report);
     static void print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk);
     static void print_pattern_matches(const std::vector<PatternMatch>& matches);
     static void print_dump_result(const DumpResult& res);

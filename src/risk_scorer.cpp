@@ -36,7 +36,9 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     bool has_mitigation_breach,
     size_t veh_anomalies_count,
     size_t thread_pool_anomalies_count,
-    size_t tls_anomalies_count
+    size_t tls_anomalies_count,
+    size_t section_anomalies_count,
+    size_t unwind_anomalies_count
 ) {
     RiskScoreBreakdown r{};
     uint32_t score = 0;
@@ -144,6 +146,16 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     if (tls_anomalies_count > 0) {
         score += 35;
         r.risk_factors.push_back(L"Thread Local Storage (TLS) callback pointing to unbacked or RWX memory (+35)");
+    }
+
+    if (section_anomalies_count > 0) {
+        score += 40;
+        r.risk_factors.push_back(L"Section-based code injection or anonymous executable mapped view (+40)");
+    }
+
+    if (unwind_anomalies_count > 0) {
+        score += 40;
+        r.risk_factors.push_back(L"Call stack spoofing or missing function unwind metadata (.pdata) (+40)");
     }
 
     if (high_entropy_regions_count > 0) {
