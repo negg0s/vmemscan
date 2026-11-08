@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-11-08
+
+### Added
+- Sleep mask memory demotion and dormant payload detector (--sleep-mask): scans sleeping thread stacks for return addresses pointing into private memory regions that were allocated as executable but demoted to non-executable (PAGE_READWRITE, PAGE_READONLY, PAGE_NOACCESS) during sleep cycles (Ekko, Foliage, Cobalt Strike Sleep Mask).
+- Anti-debugging and process instrumentation auditor (--anti-debug): queries kernel debug ports (ProcessDebugPort), debug flags (ProcessDebugFlags), debug object handles (ProcessDebugObjectHandle), PEB BeingDebugged / NtGlobalFlag heap validation flags, and scans thread hardware debug registers (DR0-DR7) for VEH hooking and analysis evasion.
+- Integrated sleep mask demotion and anti-debug indicators into unified forensic risk scoring engine (+45 for sleep masked regions, +25 for anti-debugging / hardware breakpoints).
+- Expanded automated unit test suite from 30 to 33 test suites.
+
 ## [0.7.0] - 2026-11-08
 
 ### Added

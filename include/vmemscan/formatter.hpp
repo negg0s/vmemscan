@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vmemscan/anti_debug_auditor.hpp"
 #include "vmemscan/c2_detector.hpp"
 #include "vmemscan/common.hpp"
 #include "vmemscan/entropy_calculator.hpp"
@@ -17,6 +18,7 @@
 #include "vmemscan/pattern_scanner.hpp"
 #include "vmemscan/peb_auditor.hpp"
 #include "vmemscan/risk_scorer.hpp"
+#include "vmemscan/sleep_mask_detector.hpp"
 #include "vmemscan/snapshot_differ.hpp"
 #include "vmemscan/stack_auditor.hpp"
 #include "vmemscan/syscall_auditor.hpp"
@@ -54,6 +56,8 @@ public:
     static void print_stack_report(const StackAuditReport& report);
     static void print_ghosting_report(const GhostingReport& report);
     static void print_module_stomping_report(const ModuleStompingReport& report);
+    static void print_sleep_mask_report(const SleepMaskReport& report);
+    static void print_anti_debug_report(const AntiDebugReport& report);
     static void print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk);
     static void print_pattern_matches(const std::vector<PatternMatch>& matches);
     static void print_dump_result(const DumpResult& res);

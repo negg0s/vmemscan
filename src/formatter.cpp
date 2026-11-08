@@ -686,6 +686,53 @@ void Formatter::print_module_stomping_report(const ModuleStompingReport& report)
     std::wcout << L"====================================================================================================\n\n";
 }
 
+void Formatter::print_sleep_mask_report(const SleepMaskReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" SLEEP MASK & DORMANT PAYLOAD FORENSICS: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Sleeping Threads Inspected  : " << report.sleeping_threads_scanned << L"\n";
+    std::wcout << L"  Masked / Demoted Regions    : " << report.masked_regions_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.masked_regions_count == 0) {
+        std::wcout << L"  Zero sleep mask anomalies detected. No dormant non-executable stack return addresses found.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [SLEEP MASK DETECTED] Thread TID: " << a.thread_id << L"\n";
+            std::wcout << L"    Return Address    : " << to_hex_string(a.wait_return_address) << L"\n";
+            std::wcout << L"    Target Page Base  : " << to_hex_string(a.target_region_base) << L"\n";
+            std::wcout << L"    Page Size         : " << format_bytes(a.target_region_size) << L"\n";
+            std::wcout << L"    Current Protection: " << a.protection_string << L" [DEMOTED TO HIDE EXECUTABLE CODE]\n";
+            std::wcout << L"    Details           : " << a.anomaly_description << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_anti_debug_report(const AntiDebugReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" ANTI-DEBUGGING & PROCESS INSTRUMENTATION AUDIT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Kernel Debugger Active     : " << (report.kernel_debugger_present ? L"TRUE [!]" : L"False") << L"\n";
+    std::wcout << L"  PEB BeingDebugged Flag     : " << (report.peb_being_debugged ? L"TRUE [!]" : L"False") << L"\n";
+    std::wcout << L"  Hardware Breakpoints (DR)  : " << (report.hardware_breakpoints_present ? L"ACTIVE (VEH Hooking / Evasion) [!]" : L"Clean") << L"\n";
+    std::wcout << L"  Anti-Analysis Flags        : " << (report.anti_debug_flags_detected ? L"DETECTED (NtGlobalFlag / DebugFlags altered) [!]" : L"Clean") << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.findings.empty()) {
+        std::wcout << L"  Zero anti-debugging flags or hardware breakpoints active. Normal process execution state.\n";
+    } else {
+        for (const auto& f : report.findings) {
+            std::wcout << L"  [" << (f.is_anti_debug ? L"ANTI-ANALYSIS FLAG" : L"DEBUG INDICATOR") << L"] " << f.category << L" - " << f.indicator_name << L"\n";
+            std::wcout << L"    Value   : " << to_hex_string(f.value) << L"\n";
+            std::wcout << L"    Details : " << f.details << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 void Formatter::print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk) {
     std::wcout << L"\n";
     std::wcout << L"====================================================================================================\n";

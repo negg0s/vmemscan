@@ -95,8 +95,12 @@ ThreadAuditReport ThreadAnalyzer::audit_process_threads(
 
                 // 2. Query thread context (RIP/EIP)
 #if defined(_M_X64)
-                DWORD suspend_res = SuspendThread(hThread);
-                if (suspend_res != static_cast<DWORD>(-1)) {
+                bool is_current = (te.th32ThreadID == GetCurrentThreadId());
+                DWORD suspend_res = 0;
+                if (!is_current) {
+                    suspend_res = SuspendThread(hThread);
+                }
+                if (is_current || suspend_res != static_cast<DWORD>(-1)) {
                     CONTEXT ctx{};
                     ctx.ContextFlags = CONTEXT_CONTROL;
                     if (GetThreadContext(hThread, &ctx)) {
@@ -123,7 +127,9 @@ ThreadAuditReport ThreadAnalyzer::audit_process_threads(
                             }
                         }
                     }
-                    ResumeThread(hThread);
+                    if (!is_current) {
+                        ResumeThread(hThread);
+                    }
                 }
 #endif
 

@@ -46,7 +46,9 @@ public:
         size_t unbacked_stack_frames_count = 0,
         size_t indirect_syscalls_count = 0,
         bool is_ghosted = false,
-        size_t stomped_modules_count = 0
+        size_t stomped_modules_count = 0,
+        size_t sleep_masked_regions_count = 0,
+        bool has_anti_debug = false
     );
 
     static std::wstring verdict_to_string(ThreatVerdict v);

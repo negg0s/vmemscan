@@ -29,7 +29,9 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     size_t unbacked_stack_frames_count,
     size_t indirect_syscalls_count,
     bool is_ghosted,
-    size_t stomped_modules_count
+    size_t stomped_modules_count,
+    size_t sleep_masked_regions_count,
+    bool has_anti_debug
 ) {
     RiskScoreBreakdown r{};
     uint32_t score = 0;
@@ -37,6 +39,11 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     if (has_c2_beacon) {
         score += 50;
         r.risk_factors.push_back(L"Embedded C2 beacon configuration discovered (+50)");
+    }
+
+    if (sleep_masked_regions_count > 0) {
+        score += 45;
+        r.risk_factors.push_back(L"Sleep Mask obfuscation: Return address points into private non-executable page (+45)");
     }
 
     if (is_ghosted) {
@@ -52,6 +59,11 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     if (unbacked_stack_frames_count > 0) {
         score += 40;
         r.risk_factors.push_back(L"Thread call stack contains return address pointing to unbacked memory (+40)");
+    }
+
+    if (has_anti_debug) {
+        score += 25;
+        r.risk_factors.push_back(L"Anti-analysis / anti-debugging flags or hardware breakpoints active (+25)");
     }
 
     if (stomped_modules_count > 0) {

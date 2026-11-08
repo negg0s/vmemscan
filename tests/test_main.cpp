@@ -1,3 +1,4 @@
+#include "vmemscan/anti_debug_auditor.hpp"
 #include "vmemscan/c2_detector.hpp"
 #include "vmemscan/common.hpp"
 #include "vmemscan/entropy_calculator.hpp"
@@ -19,6 +20,7 @@
 #include "vmemscan/privileges.hpp"
 #include "vmemscan/process_snapshot.hpp"
 #include "vmemscan/risk_scorer.hpp"
+#include "vmemscan/sleep_mask_detector.hpp"
 #include "vmemscan/snapshot_differ.hpp"
 #include "vmemscan/stack_auditor.hpp"
 #include "vmemscan/syscall_auditor.hpp"
@@ -635,6 +637,81 @@ void test_module_stomping_self() {
     check(rep.stomped_modules_count == 0, "clean self process has zero stomped modules");
 }
 
+void test_sleep_mask_detection_simulation() {
+    std::vector<MemoryRegion> regions;
+
+    MemoryRegion r_rw{};
+    r_rw.base_address = 0x10000000;
+    r_rw.region_size = 0x10000;
+    r_rw.type = MEM_PRIVATE;
+    r_rw.state = MEM_COMMIT;
+    r_rw.alloc_protect = PAGE_EXECUTE_READWRITE;
+    r_rw.protect = PAGE_READWRITE;
+    r_rw.is_executable = false;
+    regions.push_back(r_rw);
+
+    MemoryRegion r_rx{};
+    r_rx.base_address = 0x7FFF0000;
+    r_rx.region_size = 0x10000;
+    r_rx.type = MEM_IMAGE;
+    r_rx.state = MEM_COMMIT;
+    r_rx.alloc_protect = PAGE_EXECUTE_READ;
+    r_rx.protect = PAGE_EXECUTE_READ;
+    r_rx.is_executable = true;
+    regions.push_back(r_rx);
+
+    uint64_t stack_slots[3] = {
+        0x7FFF0120, // Valid image executable
+        0x10004500, // Demoted private RW memory (Sleep mask evasion)
+        0x00000000  // Zero slot
+    };
+
+    auto anomalies = SleepMaskDetector::scan_stack_for_masked_pages(1001, stack_slots, 3, regions);
+    check(anomalies.size() == 1, "detected exactly 1 sleep masked return address");
+    check(anomalies[0].wait_return_address == 0x10004500, "correct wait return address flagged");
+    check(anomalies[0].current_protection == PAGE_READWRITE, "correct protection flagged");
+}
+
+void test_anti_debug_auditor_self() {
+    auto rep = AntiDebugAuditor::audit_process_anti_debug(
+        GetCurrentProcess(),
+        GetCurrentProcessId(),
+        L"vmemscan_tests.exe",
+        sizeof(void*) == 8
+    );
+
+    check(rep.pid == GetCurrentProcessId(), "self pid matches in anti-debug audit");
+    check(rep.process_name == L"vmemscan_tests.exe", "process name matches in anti-debug audit");
+    check(!rep.hardware_breakpoints_present, "self process has no hardware breakpoints");
+}
+
+void test_v080_risk_scorer_evaluation() {
+    auto risk = RiskScorer::compute_process_risk(
+        false, // c2
+        false, // hollowing
+        0,     // direct syscalls
+        0,     // unbacked threads
+        0,     // security patches
+        0,     // unbacked exec
+        0,     // rwx
+        0,     // iat hooks
+        0,     // unlinked modules
+        0,     // high entropy
+        false, // args spoofing
+        0,     // unbacked stack frames
+        0,     // indirect syscalls
+        false, // ghosting
+        0,     // stomped modules
+        1,     // sleep masked regions (+45)
+        true   // anti-debug detected (+25)
+    );
+
+    check(risk.total_score >= 70, "sleep mask + anti-debug score >= 70");
+    check(risk.verdict == ThreatVerdict::Suspicious || risk.verdict == ThreatVerdict::CriticalCompromised,
+          "verdict is Suspicious or Critical");
+    check(!risk.risk_factors.empty(), "risk factors list is populated");
+}
+
 int main() {
     std::wcout << L"[RUN] test_privileges_check\n";
     test_privileges_check();
@@ -726,6 +803,15 @@ int main() {
     std::wcout << L"[RUN] test_module_stomping_self\n";
     test_module_stomping_self();
 
-    std::wcout << L"All 30 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_sleep_mask_detection_simulation\n";
+    test_sleep_mask_detection_simulation();
+
+    std::wcout << L"[RUN] test_anti_debug_auditor_self\n";
+    test_anti_debug_auditor_self();
+
+    std::wcout << L"[RUN] test_v080_risk_scorer_evaluation\n";
+    test_v080_risk_scorer_evaluation();
+
+    std::wcout << L"All 33 unit test suites passed successfully.\n";
     return 0;
 }

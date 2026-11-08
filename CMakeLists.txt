@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(vmemscan
-    VERSION 0.7.0
+    VERSION 0.8.0
     LANGUAGES CXX
 )
 
@@ -47,6 +47,7 @@ endif()
 
 # Core static library
 add_library(vmemscan_core STATIC
+    include/vmemscan/anti_debug_auditor.hpp
     include/vmemscan/c2_detector.hpp
     include/vmemscan/common.hpp
     include/vmemscan/entropy_calculator.hpp
@@ -69,11 +70,13 @@ add_library(vmemscan_core STATIC
     include/vmemscan/privileges.hpp
     include/vmemscan/process_snapshot.hpp
     include/vmemscan/risk_scorer.hpp
+    include/vmemscan/sleep_mask_detector.hpp
     include/vmemscan/snapshot_differ.hpp
     include/vmemscan/stack_auditor.hpp
     include/vmemscan/syscall_auditor.hpp
     include/vmemscan/thread_analyzer.hpp
 
+    src/anti_debug_auditor.cpp
     src/c2_detector.cpp
     src/entropy_calculator.cpp
     src/formatter.cpp
@@ -94,6 +97,7 @@ add_library(vmemscan_core STATIC
     src/privileges.cpp
     src/process_snapshot.cpp
     src/risk_scorer.cpp
+    src/sleep_mask_detector.cpp
     src/snapshot_differ.cpp
     src/stack_auditor.cpp
     src/syscall_auditor.cpp

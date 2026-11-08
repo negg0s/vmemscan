@@ -1,3 +1,4 @@
+#include "vmemscan/anti_debug_auditor.hpp"
 #include "vmemscan/c2_detector.hpp"
 #include "vmemscan/common.hpp"
 #include "vmemscan/entropy_calculator.hpp"
@@ -19,6 +20,7 @@
 #include "vmemscan/privileges.hpp"
 #include "vmemscan/process_snapshot.hpp"
 #include "vmemscan/risk_scorer.hpp"
+#include "vmemscan/sleep_mask_detector.hpp"
 #include "vmemscan/snapshot_differ.hpp"
 #include "vmemscan/stack_auditor.hpp"
 #include "vmemscan/syscall_auditor.hpp"
@@ -64,6 +66,8 @@ static void print_help() {
     std::wcout << L"  --indirect-syscalls      Audit executable memory for indirect syscall trampolines (Syswhispers3 / Hell's Hall)\n";
     std::wcout << L"  --iat                    Audit Import Address Table (IAT) for pointer hijacking and inline hooks\n";
     std::wcout << L"  --stack                  Audit thread call stacks for unbacked return addresses and spoofing\n";
+    std::wcout << L"  --sleep-mask             Audit sleeping threads for memory protection demotion (Ekko / Foliage evasion)\n";
+    std::wcout << L"  --anti-debug             Audit anti-debugging flags, PEB BeingDebugged, and hardware breakpoints (DR0-DR7)\n";
     std::wcout << L"  --score                  Compute unified forensic threat score (0-100) and risk assessment\n";
     std::wcout << L"  --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address\n";
     std::wcout << L"  --summary                Display virtual memory allocation statistics and breakdown\n\n";
@@ -93,6 +97,8 @@ static void print_help() {
     std::wcout << L"  vmemscan -p 1234 --indirect-syscalls\n";
     std::wcout << L"  vmemscan -p 1234 --iat\n";
     std::wcout << L"  vmemscan -p 1234 --stack\n";
+    std::wcout << L"  vmemscan -p 1234 --sleep-mask\n";
+    std::wcout << L"  vmemscan -p 1234 --anti-debug\n";
     std::wcout << L"  vmemscan -p 1234 --score\n";
     std::wcout << L"  vmemscan -p 1234 --hollowing\n";
     std::wcout << L"  vmemscan -p 1234 --ghosting\n";
@@ -129,6 +135,8 @@ int wmain(int argc, wchar_t* argv[]) {
     bool mode_indirect_syscalls = false;
     bool mode_iat = false;
     bool mode_stack = false;
+    bool mode_sleep_mask = false;
+    bool mode_anti_debug = false;
     bool mode_score = false;
     bool mode_iocs = false;
     uint64_t iocs_addr = 0;
@@ -158,7 +166,7 @@ int wmain(int argc, wchar_t* argv[]) {
             print_help();
             return 0;
         } else if (arg == L"-v" || arg == L"--version") {
-            std::wcout << L"vmemscan version 0.7.0\n";
+            std::wcout << L"vmemscan version 0.8.0\n";
             return 0;
         } else if (arg == L"-p" || arg == L"--pid") {
             if (i + 1 < argc) target_pid = static_cast<uint32_t>(_wtoi(argv[++i]));
@@ -200,6 +208,10 @@ int wmain(int argc, wchar_t* argv[]) {
             mode_iat = true;
         } else if (arg == L"--stack") {
             mode_stack = true;
+        } else if (arg == L"--sleep-mask") {
+            mode_sleep_mask = true;
+        } else if (arg == L"--anti-debug") {
+            mode_anti_debug = true;
         } else if (arg == L"--score") {
             mode_score = true;
         } else if (arg == L"--iocs") {
@@ -473,6 +485,22 @@ int wmain(int argc, wchar_t* argv[]) {
         return 0;
     }
 
+    if (mode_sleep_mask) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto sm_rep = SleepMaskDetector::audit_process_sleep_mask(hProcess, target_proc.pid, target_proc.name, regions);
+        Formatter::print_sleep_mask_report(sm_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_anti_debug) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto ad_rep = AntiDebugAuditor::audit_process_anti_debug(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
+        Formatter::print_anti_debug_report(ad_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
     if (mode_score) {
         if (!output_json && !output_csv) Formatter::print_banner();
         auto c2_rep = C2Detector::scan_process_c2(hProcess, target_proc.pid, target_proc.name, regions);
@@ -481,6 +509,8 @@ int wmain(int argc, wchar_t* argv[]) {
         auto isc_rep = IndirectSyscallAuditor::audit_process_indirect_syscalls(hProcess, target_proc.pid, target_proc.name, regions);
         auto thr_rep = ThreadAnalyzer::audit_process_threads(hProcess, target_proc.pid, target_proc.name, regions);
         auto stk_rep = StackAuditor::audit_process_stacks(hProcess, target_proc.pid, target_proc.name, regions);
+        auto sleep_rep = SleepMaskDetector::audit_process_sleep_mask(hProcess, target_proc.pid, target_proc.name, regions);
+        auto anti_rep = AntiDebugAuditor::audit_process_anti_debug(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
         auto patch_rep = PatchDetector::audit_process_patches(hProcess, target_proc.pid, target_proc.name);
         auto iat_rep = IatHookDetector::audit_process_iat(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit, regions, hol_rep.in_memory_image_base);
         auto mod_rep = ModuleAuditor::audit_process_modules(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
@@ -516,7 +546,9 @@ int wmain(int argc, wchar_t* argv[]) {
             stk_rep.unbacked_frames_count,
             isc_rep.anomalies_count,
             ghost_rep.is_ghosted || ghost_rep.is_herpaderped,
-            stomp_rep.stomped_modules_count
+            stomp_rep.stomped_modules_count,
+            sleep_rep.masked_regions_count,
+            anti_rep.anti_debug_flags_detected || anti_rep.hardware_breakpoints_present
         );
 
         Formatter::print_risk_assessment(target_proc, risk);
