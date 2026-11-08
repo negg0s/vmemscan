@@ -5,6 +5,7 @@
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/iat_hook_detector.hpp"
+#include "vmemscan/indirect_syscall_auditor.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/ioc_extractor.hpp"
 #include "vmemscan/memory_dumper.hpp"
@@ -17,6 +18,7 @@
 #include "vmemscan/process_snapshot.hpp"
 #include "vmemscan/risk_scorer.hpp"
 #include "vmemscan/snapshot_differ.hpp"
+#include "vmemscan/stack_auditor.hpp"
 #include "vmemscan/syscall_auditor.hpp"
 #include "vmemscan/thread_analyzer.hpp"
 
@@ -487,6 +489,95 @@ void test_risk_scorer_evaluation() {
     check(RiskScorer::verdict_to_string(ThreatVerdict::CriticalCompromised).find(L"CRITICAL") != std::wstring::npos, "critical verdict string");
 }
 
+void test_stack_auditor_scan() {
+    std::vector<MemoryRegion> regions;
+    // Region 0: unbacked executable
+    MemoryRegion r0{};
+    r0.base_address = 0x00007FF710000000;
+    r0.region_size = 0x10000;
+    r0.is_executable = true;
+    r0.is_unbacked_executable = true;
+    regions.push_back(r0);
+
+    // Region 1: RWX
+    MemoryRegion r1{};
+    r1.base_address = 0x00007FF720000000;
+    r1.region_size = 0x10000;
+    r1.is_executable = true;
+    r1.is_rwx = true;
+    regions.push_back(r1);
+
+    // Region 2: normal backed executable module
+    MemoryRegion r2{};
+    r2.base_address = 0x00007FF730000000;
+    r2.region_size = 0x10000;
+    r2.is_executable = true;
+    r2.mapped_file = L"C:\\Windows\\System32\\kernel32.dll";
+    regions.push_back(r2);
+
+    uint64_t simulated_stack[4] = {
+        0x00007FF710000500, // Points to unbacked exec
+        0x00007FF720000200, // Points to RWX
+        0x00007FF730000100, // Points to clean module
+        0x0000000000000000  // Null
+    };
+
+    auto anomalies = StackAuditor::scan_stack_buffer(
+        1234,
+        reinterpret_cast<const uint8_t*>(simulated_stack),
+        sizeof(simulated_stack),
+        0x000000100000,
+        regions
+    );
+
+    check(anomalies.size() == 2, "detected 2 stack frame anomalies");
+    check(anomalies[0].is_unbacked, "first anomaly flagged as unbacked");
+    check(anomalies[1].is_rwx, "second anomaly flagged as rwx");
+}
+
+void test_indirect_syscall_scan() {
+    std::vector<MemoryRegion> regions;
+    MemoryRegion ntdll{};
+    ntdll.base_address = 0x00007FFE80000000;
+    ntdll.region_size = 0x200000;
+    ntdll.mapped_file = L"C:\\Windows\\System32\\ntdll.dll";
+    ntdll.is_executable = true;
+    regions.push_back(ntdll);
+
+    // Pattern 1: 4C 8B D1 B8 26 00 00 00 E9 rel32
+    int64_t target1 = 0x00007FFE80050000;
+    int64_t ip1 = 0x00007FFE70001000 + 13;
+    int32_t rel32_1 = static_cast<int32_t>(target1 - ip1);
+
+    uint8_t buf1[16] = {
+        0x4C, 0x8B, 0xD1,
+        0xB8, 0x26, 0x00, 0x00, 0x00,
+        0xE9, 0x00, 0x00, 0x00, 0x00,
+        0x90, 0x90, 0x90
+    };
+    memcpy(&buf1[9], &rel32_1, sizeof(int32_t));
+
+    auto findings1 = IndirectSyscallAuditor::scan_buffer_for_indirect_syscalls(
+        buf1, sizeof(buf1), 0x00007FFE70001000, true, false, L"", regions
+    );
+
+    check(findings1.size() == 1, "detected Syswhispers3 indirect syscall trampoline");
+    check(findings1[0].ssn == 0x26, "extracted SSN 0x26");
+    check(findings1[0].target_address == static_cast<uint64_t>(target1), "matched jump target address");
+    check(findings1[0].target_module.find(L"ntdll.dll") != std::wstring::npos, "resolved jump target to ntdll.dll");
+}
+
+void test_extended_risk_scorer() {
+    auto risk = RiskScorer::compute_process_risk(
+        false, false, 0, 0, 0, 0, 0, 0, 0, 0, false,
+        1, // unbacked stack frame (+40)
+        1  // indirect syscall (+35)
+    );
+    check(risk.total_score == 75, "risk score with stack and indirect syscalls is 75");
+    check(risk.verdict == ThreatVerdict::Suspicious, "verdict is Suspicious");
+    check(risk.risk_factors.size() == 2, "two risk factors recorded");
+}
+
 int main() {
     std::wcout << L"[RUN] test_privileges_check\n";
     test_privileges_check();
@@ -560,6 +651,15 @@ int main() {
     std::wcout << L"[RUN] test_risk_scorer_evaluation\n";
     test_risk_scorer_evaluation();
 
-    std::wcout << L"All 24 unit test suites passed successfully.\n";
+    std::wcout << L"[RUN] test_stack_auditor_scan\n";
+    test_stack_auditor_scan();
+
+    std::wcout << L"[RUN] test_indirect_syscall_scan\n";
+    test_indirect_syscall_scan();
+
+    std::wcout << L"[RUN] test_extended_risk_scorer\n";
+    test_extended_risk_scorer();
+
+    std::wcout << L"All 27 unit test suites passed successfully.\n";
     return 0;
 }

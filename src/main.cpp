@@ -5,6 +5,7 @@
 #include "vmemscan/hook_detector.hpp"
 #include "vmemscan/hollowing_detector.hpp"
 #include "vmemscan/iat_hook_detector.hpp"
+#include "vmemscan/indirect_syscall_auditor.hpp"
 #include "vmemscan/injection_detector.hpp"
 #include "vmemscan/ioc_extractor.hpp"
 #include "vmemscan/memory_dumper.hpp"
@@ -17,6 +18,7 @@
 #include "vmemscan/process_snapshot.hpp"
 #include "vmemscan/risk_scorer.hpp"
 #include "vmemscan/snapshot_differ.hpp"
+#include "vmemscan/stack_auditor.hpp"
 #include "vmemscan/syscall_auditor.hpp"
 #include "vmemscan/thread_analyzer.hpp"
 
@@ -55,7 +57,9 @@ static void print_help() {
     std::wcout << L"  --c2                     Scan committed memory for Cobalt Strike C2 beacon configurations\n";
     std::wcout << L"  --peb                    Audit PEB parameters, argument spoofing, and CLR profiler hijacks\n";
     std::wcout << L"  --syscalls               Audit executable memory for direct syscall stubs and EDR bypasses\n";
+    std::wcout << L"  --indirect-syscalls      Audit executable memory for indirect syscall trampolines (Syswhispers3 / Hell's Hall)\n";
     std::wcout << L"  --iat                    Audit Import Address Table (IAT) for pointer hijacking and inline hooks\n";
+    std::wcout << L"  --stack                  Audit thread call stacks for unbacked return addresses and spoofing\n";
     std::wcout << L"  --score                  Compute unified forensic threat score (0-100) and risk assessment\n";
     std::wcout << L"  --iocs <hex_addr>        Extract and classify IOCs (URLs, pipes, IPs, lolbins) from address\n";
     std::wcout << L"  --summary                Display virtual memory allocation statistics and breakdown\n\n";
@@ -82,7 +86,9 @@ static void print_help() {
     std::wcout << L"  vmemscan -p 1234 -i\n";
     std::wcout << L"  vmemscan -p 1234 --patches\n";
     std::wcout << L"  vmemscan -p 1234 --syscalls\n";
+    std::wcout << L"  vmemscan -p 1234 --indirect-syscalls\n";
     std::wcout << L"  vmemscan -p 1234 --iat\n";
+    std::wcout << L"  vmemscan -p 1234 --stack\n";
     std::wcout << L"  vmemscan -p 1234 --score\n";
     std::wcout << L"  vmemscan -p 1234 --hollowing\n";
     std::wcout << L"  vmemscan -p 1234 --save-snapshot baseline.json\n";
@@ -112,7 +118,9 @@ int wmain(int argc, wchar_t* argv[]) {
     bool mode_c2 = false;
     bool mode_peb = false;
     bool mode_syscalls = false;
+    bool mode_indirect_syscalls = false;
     bool mode_iat = false;
+    bool mode_stack = false;
     bool mode_score = false;
     bool mode_iocs = false;
     uint64_t iocs_addr = 0;
@@ -142,7 +150,7 @@ int wmain(int argc, wchar_t* argv[]) {
             print_help();
             return 0;
         } else if (arg == L"-v" || arg == L"--version") {
-            std::wcout << L"vmemscan version 0.5.0\n";
+            std::wcout << L"vmemscan version 0.6.0\n";
             return 0;
         } else if (arg == L"-p" || arg == L"--pid") {
             if (i + 1 < argc) target_pid = static_cast<uint32_t>(_wtoi(argv[++i]));
@@ -174,8 +182,12 @@ int wmain(int argc, wchar_t* argv[]) {
             mode_peb = true;
         } else if (arg == L"--syscalls") {
             mode_syscalls = true;
+        } else if (arg == L"--indirect-syscalls") {
+            mode_indirect_syscalls = true;
         } else if (arg == L"--iat") {
             mode_iat = true;
+        } else if (arg == L"--stack") {
+            mode_stack = true;
         } else if (arg == L"--score") {
             mode_score = true;
         } else if (arg == L"--iocs") {
@@ -409,10 +421,26 @@ int wmain(int argc, wchar_t* argv[]) {
         return 0;
     }
 
+    if (mode_indirect_syscalls) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto isc_rep = IndirectSyscallAuditor::audit_process_indirect_syscalls(hProcess, target_proc.pid, target_proc.name, regions);
+        Formatter::print_indirect_syscall_report(isc_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
     if (mode_iat) {
         if (!output_json && !output_csv) Formatter::print_banner();
         auto iat_rep = IatHookDetector::audit_process_iat(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit, regions);
         Formatter::print_iat_report(iat_rep);
+        CloseHandle(hProcess);
+        return 0;
+    }
+
+    if (mode_stack) {
+        if (!output_json && !output_csv) Formatter::print_banner();
+        auto stk_rep = StackAuditor::audit_process_stacks(hProcess, target_proc.pid, target_proc.name, regions);
+        Formatter::print_stack_report(stk_rep);
         CloseHandle(hProcess);
         return 0;
     }
@@ -422,7 +450,9 @@ int wmain(int argc, wchar_t* argv[]) {
         auto c2_rep = C2Detector::scan_process_c2(hProcess, target_proc.pid, target_proc.name, regions);
         auto hol_rep = HollowingDetector::analyze_process(hProcess, target_proc.pid, target_proc.name, target_proc.path, target_proc.is_64bit);
         auto sc_rep = SyscallAuditor::audit_process_syscalls(hProcess, target_proc.pid, target_proc.name, regions);
+        auto isc_rep = IndirectSyscallAuditor::audit_process_indirect_syscalls(hProcess, target_proc.pid, target_proc.name, regions);
         auto thr_rep = ThreadAnalyzer::audit_process_threads(hProcess, target_proc.pid, target_proc.name, regions);
+        auto stk_rep = StackAuditor::audit_process_stacks(hProcess, target_proc.pid, target_proc.name, regions);
         auto patch_rep = PatchDetector::audit_process_patches(hProcess, target_proc.pid, target_proc.name);
         auto iat_rep = IatHookDetector::audit_process_iat(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit, regions, hol_rep.in_memory_image_base);
         auto mod_rep = ModuleAuditor::audit_process_modules(hProcess, target_proc.pid, target_proc.name, target_proc.is_64bit);
@@ -452,7 +482,9 @@ int wmain(int argc, wchar_t* argv[]) {
             iat_rep.hooked_imports_count,
             mod_rep.anomalous_modules_count,
             high_entropy_count,
-            !peb_rep.anomalies.empty()
+            !peb_rep.anomalies.empty(),
+            stk_rep.unbacked_frames_count,
+            isc_rep.anomalies_count
         );
 
         Formatter::print_risk_assessment(target_proc, risk);

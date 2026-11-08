@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-11-08
+
+### Added
+- Thread call stack and return address auditor (--stack): inspects active thread stacks at runtime, walking pointer slots to identify return addresses pointing to unbacked private memory (shellcode stagers, reflective DLLs, and sleeping beacons) and RWX pages.
+- Indirect syscall and trampoline detector (--indirect-syscalls): scans executable regions for indirect syscall trampolines (Syswhispers3, Tartarus' Gate, Hell's Hall) that set up system service numbers and jump into ntdll.dll or win32u.dll to evade inline EDR telemetry hooks.
+- Integrated stack anomaly and indirect syscall factors into unified forensic risk scoring engine (+40 for unbacked return addresses, +35 for indirect syscalls).
+- Expanded automated unit test suite from 24 to 27 test suites.
+
 ## [0.5.0] - 2026-11-08
 
 ### Added

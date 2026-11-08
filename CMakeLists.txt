@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(vmemscan
-    VERSION 0.5.0
+    VERSION 0.6.0
     LANGUAGES CXX
 )
 
@@ -54,6 +54,7 @@ add_library(vmemscan_core STATIC
     include/vmemscan/hook_detector.hpp
     include/vmemscan/hollowing_detector.hpp
     include/vmemscan/iat_hook_detector.hpp
+    include/vmemscan/indirect_syscall_auditor.hpp
     include/vmemscan/injection_detector.hpp
     include/vmemscan/ioc_extractor.hpp
     include/vmemscan/memory_dumper.hpp
@@ -67,6 +68,7 @@ add_library(vmemscan_core STATIC
     include/vmemscan/process_snapshot.hpp
     include/vmemscan/risk_scorer.hpp
     include/vmemscan/snapshot_differ.hpp
+    include/vmemscan/stack_auditor.hpp
     include/vmemscan/syscall_auditor.hpp
     include/vmemscan/thread_analyzer.hpp
 
@@ -76,6 +78,7 @@ add_library(vmemscan_core STATIC
     src/hook_detector.cpp
     src/hollowing_detector.cpp
     src/iat_hook_detector.cpp
+    src/indirect_syscall_auditor.cpp
     src/injection_detector.cpp
     src/ioc_extractor.cpp
     src/memory_dumper.cpp
@@ -88,6 +91,7 @@ add_library(vmemscan_core STATIC
     src/process_snapshot.cpp
     src/risk_scorer.cpp
     src/snapshot_differ.cpp
+    src/stack_auditor.cpp
     src/syscall_auditor.cpp
     src/thread_analyzer.cpp
 )

@@ -42,7 +42,9 @@ public:
         size_t iat_hooks_count,
         size_t unlinked_modules_count,
         size_t high_entropy_regions_count,
-        bool has_argument_spoofing
+        bool has_argument_spoofing,
+        size_t unbacked_stack_frames_count = 0,
+        size_t indirect_syscalls_count = 0
     );
 
     static std::wstring verdict_to_string(ThreatVerdict v);

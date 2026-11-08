@@ -572,6 +572,67 @@ void Formatter::print_iat_report(const IatHookReport& report) {
     std::wcout << L"====================================================================================================\n\n";
 }
 
+void Formatter::print_indirect_syscall_report(const IndirectSyscallReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" INDIRECT SYSCALL & TRAMPOLINE AUDIT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Executable Regions Evaluated: " << report.regions_evaluated << L"\n";
+    std::wcout << L"  Indirect Syscall Trampolines: " << report.anomalies_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.anomalies_count == 0) {
+        std::wcout << L"  Zero indirect syscall trampolines detected. No user-mode JMP evasion stubs found.\n";
+    } else {
+        for (const auto& f : report.findings) {
+            std::wcout << L"  [INDIRECT SYSCALL DETECTED] Address: " << to_hex_string(f.virtual_address) << L"\n";
+            std::wcout << L"    Technique   : " << f.technique_name << L"\n";
+            std::wcout << L"    Syscall SSN : 0x" << std::hex << f.ssn << std::dec << L" (Decimal: " << f.ssn << L")\n";
+            std::wcout << L"    Jump Target : " << to_hex_string(f.target_address) << L"\n";
+            if (!f.target_module.empty()) {
+                std::wcout << L"    Target Mod  : " << f.target_module << L"\n";
+            }
+            std::wcout << L"    Memory Type : " << (f.is_unbacked ? L"UNBACKED PRIVATE MEMORY [!]" : (f.mapped_module.empty() ? L"Anonymous" : f.mapped_module)) << L"\n";
+            if (f.is_rwx) {
+                std::wcout << L"    Protection  : PAGE_EXECUTE_READWRITE [W^X BREACH]\n";
+            }
+            if (!f.instruction_bytes.empty()) {
+                std::wcout << L"    Hex Bytes   : " << bytes_to_hex_preview(f.instruction_bytes) << L"\n";
+            }
+            std::wcout << L"\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
+void Formatter::print_stack_report(const StackAuditReport& report) {
+    std::wcout << L"\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L" THREAD CALL STACK & RETURN ADDRESS AUDIT: " << report.process_name << L" (PID " << report.pid << L")\n";
+    std::wcout << L"====================================================================================================\n";
+    std::wcout << L"  Threads Inspected         : " << report.threads_inspected << L"\n";
+    std::wcout << L"  Stack Pointer Slots Walked: " << report.total_frames_scanned << L"\n";
+    std::wcout << L"  Unbacked Return Addresses : " << report.unbacked_frames_count << L"\n";
+    std::wcout << L"----------------------------------------------------------------------------------------------------\n";
+
+    if (report.unbacked_frames_count == 0) {
+        std::wcout << L"  Zero unbacked stack frames detected. All return pointers resolve to mapped library files.\n";
+    } else {
+        for (const auto& a : report.anomalies) {
+            std::wcout << L"  [UNBACKED STACK FRAME] Thread TID: " << a.thread_id << L"\n";
+            std::wcout << L"    Stack Address     : " << to_hex_string(a.stack_slot_address) << L"\n";
+            std::wcout << L"    Return Address    : " << to_hex_string(a.return_address)
+                       << (a.is_unbacked ? L" [UNBACKED PRIVATE MEMORY]" : L"")
+                       << (a.is_rwx ? L" [PAGE_EXECUTE_READWRITE]" : L"") << L"\n";
+            if (!a.mapped_module.empty()) {
+                std::wcout << L"    Resolved Module   : " << a.mapped_module << L"\n";
+            }
+            std::wcout << L"    Anomaly Details   : " << a.anomaly_description << L"\n\n";
+        }
+    }
+    std::wcout << L"====================================================================================================\n\n";
+}
+
 void Formatter::print_risk_assessment(const ProcessInfo& proc, const RiskScoreBreakdown& risk) {
     std::wcout << L"\n";
     std::wcout << L"====================================================================================================\n";

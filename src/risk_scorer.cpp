@@ -25,7 +25,9 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     size_t iat_hooks_count,
     size_t unlinked_modules_count,
     size_t high_entropy_regions_count,
-    bool has_argument_spoofing
+    bool has_argument_spoofing,
+    size_t unbacked_stack_frames_count,
+    size_t indirect_syscalls_count
 ) {
     RiskScoreBreakdown r{};
     uint32_t score = 0;
@@ -38,6 +40,16 @@ RiskScoreBreakdown RiskScorer::compute_process_risk(
     if (is_hollowed) {
         score += 45;
         r.risk_factors.push_back(L"Process Hollowing / PE EntryPoint divergence detected (+45)");
+    }
+
+    if (unbacked_stack_frames_count > 0) {
+        score += 40;
+        r.risk_factors.push_back(L"Thread call stack contains return address pointing to unbacked memory (+40)");
+    }
+
+    if (indirect_syscalls_count > 0) {
+        score += 35;
+        r.risk_factors.push_back(L"Indirect syscall trampolines (Syswhispers3 / Hell's Hall) detected (+35)");
     }
 
     if (unbacked_threads_count > 0) {
