@@ -1,5 +1,11 @@
 # vmemscan
 
+[![CI](https://github.com/negg0s/vmemscan/actions/workflows/ci.yml/badge.svg)](https://github.com/negg0s/vmemscan/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/negg0s/vmemscan?color=blue)](https://github.com/negg0s/vmemscan/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform: Windows x64](https://img.shields.io/badge/Platform-Windows%20x64-0078D6.svg)](https://microsoft.com)
+[![Language: C++20](https://img.shields.io/badge/Language-C%2B%2B20-00599C.svg)](https://isocpp.org)
+
 Windows Virtual Memory and Process Injection Forensics CLI.
 
 Written in modern C++20 and pure Win32 / NT Native API. Zero external dependencies, static CRT (`/MT`), self-contained single binary.
