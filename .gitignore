@@ -11,3 +11,8 @@ bin/
 carved_*/
 dumped_*/
 *.bin
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
