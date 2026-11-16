@@ -101,7 +101,7 @@ GhostingReport GhostingDetector::audit_process_ghosting(
                 a.details = L"Disk executable file lacks valid DOS MZ header while in-memory image is executing.";
                 a.is_critical = true;
                 rep.anomalies.push_back(std::move(a));
-            } else {
+            } else if (disk_dos.e_lfanew >= static_cast<LONG>(sizeof(IMAGE_DOS_HEADER)) && disk_dos.e_lfanew <= 0x10000000) {
                 // Seek to NT header on disk
                 SetFilePointer(hFile, disk_dos.e_lfanew, nullptr, FILE_BEGIN);
                 IMAGE_NT_HEADERS64 disk_nt{};

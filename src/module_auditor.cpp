@@ -102,7 +102,7 @@ ModuleAuditReport ModuleAuditor::audit_process_modules(
                             ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(current + 0x58), &base_name_str, sizeof(base_name_str), &read);
 
                             std::wstring base_name;
-                            if (base_name_str.Length > 0 && base_name_str.Buffer) {
+                            if (base_name_str.Length > 0 && base_name_str.Length <= 4096 && base_name_str.Buffer) {
                                 std::vector<wchar_t> name_buf((base_name_str.Length / sizeof(wchar_t)) + 1, 0);
                                 if (ReadProcessMemory(hProcess, base_name_str.Buffer, name_buf.data(), base_name_str.Length, &read)) {
                                     base_name = name_buf.data();
@@ -110,7 +110,7 @@ ModuleAuditReport ModuleAuditor::audit_process_modules(
                             }
 
                             std::wstring full_name;
-                            if (full_name_str.Length > 0 && full_name_str.Buffer) {
+                            if (full_name_str.Length > 0 && full_name_str.Length <= 32768 && full_name_str.Buffer) {
                                 std::vector<wchar_t> path_buf((full_name_str.Length / sizeof(wchar_t)) + 1, 0);
                                 if (ReadProcessMemory(hProcess, full_name_str.Buffer, path_buf.data(), full_name_str.Length, &read)) {
                                     full_name = path_buf.data();
