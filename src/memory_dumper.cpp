@@ -1,5 +1,6 @@
 #include "vmemscan/memory_dumper.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -29,6 +30,11 @@ Result<DumpResult> MemoryDumper::dump_region(
 
     if (size == 0) {
         return Error(ERROR_INVALID_PARAMETER, L"Region size is zero");
+    }
+
+    constexpr uint64_t MAX_DUMP_SIZE = 512ULL * 1024ULL * 1024ULL; // 512 MB safety ceiling
+    if (size > MAX_DUMP_SIZE) {
+        return Error(ERROR_NOT_ENOUGH_MEMORY, L"Requested dump size exceeds maximum allowed limit (512 MB)");
     }
 
     std::wstring final_path = out_path;
@@ -67,28 +73,35 @@ Result<DumpResult> MemoryDumper::dump_region(
     if (buffer.size() >= sizeof(IMAGE_DOS_HEADER)) {
         const auto* dos_hdr = reinterpret_cast<const IMAGE_DOS_HEADER*>(buffer.data());
         if (dos_hdr->e_magic == IMAGE_DOS_SIGNATURE && dos_hdr->e_lfanew > 0 &&
-            static_cast<size_t>(dos_hdr->e_lfanew) + sizeof(IMAGE_NT_HEADERS32) <= buffer.size()) {
+            static_cast<size_t>(dos_hdr->e_lfanew) + sizeof(IMAGE_NT_HEADERS64) <= buffer.size()) {
             res.is_pe_image = true;
 
             if (fixup_pe) {
                 // Adjust section alignment and raw pointers so PE analyzers can read section data
                 auto* nt_hdr = reinterpret_cast<IMAGE_NT_HEADERS*>(buffer.data() + dos_hdr->e_lfanew);
                 if (nt_hdr->Signature == IMAGE_NT_SIGNATURE) {
-                    const WORD num_sections = nt_hdr->FileHeader.NumberOfSections;
-                    auto* sec_hdr = IMAGE_FIRST_SECTION(nt_hdr);
+                    const WORD num_sections = (std::min)(nt_hdr->FileHeader.NumberOfSections, static_cast<WORD>(96));
+                    const size_t opt_hdr_size = nt_hdr->FileHeader.SizeOfOptionalHeader;
+                    const size_t sec_table_offset = static_cast<size_t>(dos_hdr->e_lfanew) +
+                                                    sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER) + opt_hdr_size;
 
-                    for (WORD i = 0; i < num_sections; ++i) {
-                        if (reinterpret_cast<const uint8_t*>(sec_hdr + 1) > buffer.data() + buffer.size()) {
-                            break;
+                    if (sec_table_offset + (num_sections * sizeof(IMAGE_SECTION_HEADER)) <= buffer.size()) {
+                        auto* sec_hdr = reinterpret_cast<IMAGE_SECTION_HEADER*>(buffer.data() + sec_table_offset);
+                        for (WORD i = 0; i < num_sections; ++i) {
+                            sec_hdr[i].PointerToRawData = sec_hdr[i].VirtualAddress;
+                            sec_hdr[i].SizeOfRawData = sec_hdr[i].Misc.VirtualSize;
                         }
-                        sec_hdr->PointerToRawData = sec_hdr->VirtualAddress;
-                        sec_hdr->SizeOfRawData = sec_hdr->Misc.VirtualSize;
-                        ++sec_hdr;
+                        res.pe_reconstructed = true;
                     }
-                    res.pe_reconstructed = true;
                 }
             }
         }
+    }
+
+    std::filesystem::path fp(final_path);
+    if (fp.has_parent_path()) {
+        std::error_code ec;
+        std::filesystem::create_directories(fp.parent_path(), ec);
     }
 
     std::ofstream out(final_path, std::ios::binary);

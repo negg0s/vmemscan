@@ -85,7 +85,9 @@ ModuleStompingReport ModuleStompingDetector::audit_process_module_stomping(
 
             IMAGE_DOS_HEADER dos{};
             DWORD read = 0;
-            if (!ReadFile(hFile, &dos, sizeof(dos), &read, nullptr) || dos.e_magic != IMAGE_DOS_SIGNATURE) {
+            if (!ReadFile(hFile, &dos, sizeof(dos), &read, nullptr) ||
+                dos.e_magic != IMAGE_DOS_SIGNATURE ||
+                dos.e_lfanew <= 0 || static_cast<uint32_t>(dos.e_lfanew) > 0x10000000) {
                 CloseHandle(hFile);
                 continue;
             }
@@ -98,6 +100,10 @@ ModuleStompingReport ModuleStompingDetector::audit_process_module_stomping(
             }
 
             const size_t num_sec = nth.FileHeader.NumberOfSections;
+            if (num_sec == 0 || num_sec > 96) {
+                CloseHandle(hFile);
+                continue;
+            }
             std::vector<IMAGE_SECTION_HEADER> sections(num_sec);
             if (!ReadFile(hFile, sections.data(), static_cast<DWORD>(num_sec * sizeof(IMAGE_SECTION_HEADER)), &read, nullptr)) {
                 CloseHandle(hFile);

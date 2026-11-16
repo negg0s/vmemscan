@@ -115,6 +115,15 @@ HollowingReport HollowingDetector::analyze_process(
         return rep;
     }
 
+    if (in_mem_dos.e_lfanew <= 0 || static_cast<uint32_t>(in_mem_dos.e_lfanew) > 0x10000000) {
+        HollowingAnomaly an{};
+        an.type = HollowingAnomalyType::HeadersCorrupted;
+        an.description = L"In-memory PE DOS e_lfanew invalid or out of bounds (Header Stomping)";
+        an.is_critical = true;
+        rep.anomalies.push_back(std::move(an));
+        return rep;
+    }
+
     uint32_t in_mem_ep_rva = 0;
     uint32_t in_mem_size_of_image = 0;
 
@@ -178,7 +187,9 @@ HollowingReport HollowingDetector::analyze_process(
         if (hFile != INVALID_HANDLE_VALUE) {
             IMAGE_DOS_HEADER disk_dos{};
             DWORD dwRead = 0;
-            if (ReadFile(hFile, &disk_dos, sizeof(disk_dos), &dwRead, nullptr) && disk_dos.e_magic == IMAGE_DOS_SIGNATURE) {
+            if (ReadFile(hFile, &disk_dos, sizeof(disk_dos), &dwRead, nullptr) &&
+                disk_dos.e_magic == IMAGE_DOS_SIGNATURE &&
+                disk_dos.e_lfanew > 0 && static_cast<uint32_t>(disk_dos.e_lfanew) <= 0x10000000) {
                 SetFilePointer(hFile, disk_dos.e_lfanew, nullptr, FILE_BEGIN);
                 if (is_64bit) {
                     IMAGE_NT_HEADERS64 disk_nth{};

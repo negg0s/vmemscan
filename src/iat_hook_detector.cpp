@@ -55,7 +55,9 @@ IatHookReport IatHookDetector::audit_process_iat(
 
     IMAGE_DOS_HEADER dos{};
     SIZE_T read = 0;
-    if (!ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(image_base), &dos, sizeof(dos), &read) || dos.e_magic != IMAGE_DOS_SIGNATURE) {
+    if (!ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(image_base), &dos, sizeof(dos), &read) ||
+        dos.e_magic != IMAGE_DOS_SIGNATURE ||
+        dos.e_lfanew <= 0 || static_cast<uint32_t>(dos.e_lfanew) > 0x10000000) {
         return rep;
     }
 
@@ -74,7 +76,7 @@ IatHookReport IatHookDetector::audit_process_iat(
     for (size_t d_idx = 0; d_idx < 100; ++d_idx) {
         IMAGE_IMPORT_DESCRIPTOR desc{};
         if (!ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(desc_addr + (d_idx * sizeof(desc))), &desc, sizeof(desc), &read) ||
-            (desc.Name == 0 && desc.FirstThunk == 0)) {
+            desc.Name == 0 || desc.FirstThunk == 0) {
             break;
         }
 

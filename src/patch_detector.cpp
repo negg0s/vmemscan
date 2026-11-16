@@ -139,7 +139,8 @@ uint64_t PatchDetector::resolve_remote_export(
     IMAGE_DOS_HEADER dos{};
     SIZE_T read = 0;
     if (!ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(mod_base), &dos, sizeof(dos), &read) ||
-        dos.e_magic != IMAGE_DOS_SIGNATURE) {
+        dos.e_magic != IMAGE_DOS_SIGNATURE ||
+        dos.e_lfanew <= 0 || static_cast<uint32_t>(dos.e_lfanew) > 0x10000000) {
         return 0;
     }
 
@@ -157,6 +158,11 @@ uint64_t PatchDetector::resolve_remote_export(
 
     IMAGE_EXPORT_DIRECTORY exp_dir{};
     if (!ReadProcessMemory(hProcess, reinterpret_cast<LPCVOID>(mod_base + export_data_dir.VirtualAddress), &exp_dir, sizeof(exp_dir), &read)) {
+        return 0;
+    }
+
+    if (exp_dir.NumberOfFunctions == 0 || exp_dir.NumberOfFunctions > 65536 ||
+        exp_dir.NumberOfNames > 65536) {
         return 0;
     }
 

@@ -166,7 +166,7 @@ ProcessInjectionReport InjectionDetector::analyze_process(
 
                             // Find matching memory region
                             for (const auto& r : regions) {
-                                if (u_addr >= r.base_address && u_addr < r.base_address + r.region_size) {
+                                if (u_addr >= r.base_address && (u_addr - r.base_address) < r.region_size) {
                                     if (r.is_unbacked_executable) {
                                         ThreadAnomaly ta{};
                                         ta.thread_id = te.th32ThreadID;
